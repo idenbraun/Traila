@@ -24,6 +24,7 @@
             --text-faint: rgba(255, 255, 255, 0.35);
             --accent: #c4f04d;
             --danger: #ff4757;
+            --warning: #ffa502;
         }
         
         * {
@@ -32,7 +33,6 @@
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
             -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         }
         
         html, body {
@@ -45,10 +45,8 @@
             background: var(--bg);
             color: var(--text);
             letter-spacing: -0.02em;
-            position: relative;
         }
         
-        /* ============ MAP ============ */
         #map {
             position: absolute;
             inset: 0;
@@ -62,7 +60,6 @@
         .leaflet-control-attribution { display: none !important; }
         .leaflet-control-zoom { display: none !important; }
         
-        /* ============ SCREENS ============ */
         .screen {
             position: fixed;
             inset: 0;
@@ -79,12 +76,10 @@
             z-index: 5;
         }
         
-        /* ============ TRACKING SCREEN ============ */
         #trackingScreen {
             justify-content: space-between;
         }
         
-        /* Top bar */
         .top-bar {
             padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 0;
             display: flex;
@@ -105,8 +100,70 @@
             font-size: 24px;
             letter-spacing: -0.04em;
             color: var(--text);
-            text-shadow: 0 2px 16px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.5);
+            text-shadow: 0 2px 16px rgba(0,0,0,0.8);
         }
+        
+        .top-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* GPS Quality indicator */
+        .gps-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: rgba(10, 10, 11, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .gps-indicator.active {
+            opacity: 1;
+        }
+        
+        .gps-indicator.good { border-color: rgba(196, 240, 77, 0.3); }
+        .gps-indicator.medium { border-color: rgba(255, 165, 2, 0.3); }
+        .gps-indicator.bad { border-color: rgba(255, 71, 87, 0.3); }
+        
+        .gps-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 12px;
+        }
+        
+        .gps-bar {
+            width: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 1px;
+        }
+        
+        .gps-bar:nth-child(1) { height: 4px; }
+        .gps-bar:nth-child(2) { height: 7px; }
+        .gps-bar:nth-child(3) { height: 10px; }
+        .gps-bar:nth-child(4) { height: 12px; }
+        
+        .gps-indicator.good .gps-bar { background: var(--accent); }
+        .gps-indicator.medium .gps-bar:nth-child(-n+3) { background: var(--warning); }
+        .gps-indicator.bad .gps-bar:nth-child(-n+2) { background: var(--danger); }
+        
+        .gps-text {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        .gps-indicator.good .gps-text { color: var(--accent); }
+        .gps-indicator.medium .gps-text { color: var(--warning); }
+        .gps-indicator.bad .gps-text { color: var(--danger); }
         
         .rec-badge {
             display: flex;
@@ -142,10 +199,9 @@
             color: var(--danger);
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            text-shadow: 0 2px 16px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.5);
+            text-shadow: 0 2px 16px rgba(0,0,0,0.8);
         }
         
-        /* Bottom panel */
         .bottom-panel {
             position: relative;
             z-index: 20;
@@ -155,7 +211,6 @@
             gap: 12px;
         }
         
-        /* Stats */
         .stats-bento {
             display: flex;
             gap: 8px;
@@ -165,8 +220,6 @@
             background: transparent;
             border-radius: 20px;
             padding: 16px;
-            position: relative;
-            overflow: hidden;
             flex: 1;
         }
         
@@ -205,14 +258,12 @@
             font-weight: 500;
             color: rgba(255, 255, 255, 0.7);
             margin-left: 4px;
-            letter-spacing: 0;
         }
         
         .stat-tile.primary .stat-unit {
             font-size: 16px;
         }
         
-        /* Button row */
         .btn-row {
             display: flex;
             gap: 10px;
@@ -220,7 +271,6 @@
         }
         
         .btn {
-            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -231,21 +281,17 @@
             font-family: 'Inter', sans-serif;
             font-size: 16px;
             font-weight: 600;
-            letter-spacing: -0.01em;
             cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.3s ease;
-            overflow: hidden;
+            transition: transform 0.15s ease;
         }
         
-        .btn:active {
-            transform: scale(0.98);
-        }
+        .btn:active { transform: scale(0.98); }
         
         .btn-primary {
             flex: 1;
             background: var(--accent);
             color: #0a0a0b;
-            box-shadow: 0 10px 40px -10px var(--accent), inset 0 1px 0 rgba(255,255,255,0.3);
+            box-shadow: 0 10px 40px -10px var(--accent);
         }
         
         .btn-icon-only {
@@ -253,32 +299,16 @@
             flex: none;
             padding: 0;
             background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.15);
             color: var(--text);
         }
         
-        .btn-icon-only:active {
-            background: rgba(255, 255, 255, 0.18);
-        }
-        
-        .btn-icon-only svg {
-            width: 22px;
-            height: 22px;
-        }
-        
-        .btn-icon {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
+        .btn-icon-only svg { width: 22px; height: 22px; }
+        .btn-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
         .btn-icon svg { width: 100%; height: 100%; }
         
-        /* ============ FINISH SCREEN ============ */
         #finishScreen {
             background: var(--bg);
             overflow-y: auto;
@@ -311,12 +341,8 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background 0.2s;
         }
         
-        .close-btn:active { background: var(--border-strong); }
-        
-        /* ============ CARD ============ */
         .card-wrapper {
             padding: 0 20px;
             margin-bottom: 20px;
@@ -329,7 +355,7 @@
             border-radius: 28px;
             overflow: hidden;
             background: linear-gradient(160deg, #0f0f14 0%, #1a0f24 50%, #0f0f14 100%);
-            box-shadow: 0 30px 80px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05);
+            box-shadow: 0 30px 80px -20px rgba(0,0,0,0.8);
             animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
         }
         
@@ -389,7 +415,6 @@
             font-weight: 500;
             opacity: 0.5;
             letter-spacing: 0.05em;
-            text-align: right;
         }
         
         .card-map {
@@ -403,11 +428,7 @@
             min-height: 200px;
         }
         
-        #cardMap {
-            width: 100%;
-            height: 100%;
-        }
-        
+        #cardMap { width: 100%; height: 100%; }
         .card-map .leaflet-control-attribution { display: none !important; }
         
         .card-stats {
@@ -443,7 +464,6 @@
             margin-left: 2px;
         }
         
-        /* Action buttons */
         .actions {
             padding: 0 20px;
             display: flex;
@@ -463,7 +483,6 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-            transition: transform 0.15s;
         }
         
         .btn-action:active { transform: scale(0.98); }
@@ -480,7 +499,6 @@
             border: 1px solid var(--border);
         }
         
-        /* Toast */
         .toast {
             position: fixed;
             bottom: 30px;
@@ -500,9 +518,7 @@
             gap: 8px;
         }
         
-        .toast.show {
-            transform: translateX(-50%) translateY(0);
-        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
         
         .toast-icon {
             width: 16px;
@@ -510,7 +526,6 @@
             color: var(--accent);
         }
         
-        /* Loading */
         .loading-overlay {
             position: absolute;
             inset: 0;
@@ -541,18 +556,63 @@
         }
         
         @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Map matching indicator */
+        .matching-badge {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            padding: 16px 24px;
+            background: rgba(10, 10, 11, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-strong);
+            border-radius: 16px;
+            z-index: 1001;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .matching-badge.active {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+        
+        .matching-badge .spinner {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .matching-badge-text {
+            font-size: 13px;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
-    <!-- TRACKING SCREEN -->
     <div class="screen" id="trackingScreen">
         <div id="map"></div>
         
         <div class="top-bar">
             <div class="logo-text">TRAILA</div>
-            <div class="rec-badge" id="recBadge">
-                <div class="rec-dot"></div>
-                <span class="rec-text">REC</span>
+            <div class="top-right">
+                <div class="gps-indicator" id="gpsIndicator">
+                    <div class="gps-bars">
+                        <div class="gps-bar"></div>
+                        <div class="gps-bar"></div>
+                        <div class="gps-bar"></div>
+                        <div class="gps-bar"></div>
+                    </div>
+                    <span class="gps-text" id="gpsText">—</span>
+                </div>
+                <div class="rec-badge" id="recBadge">
+                    <div class="rec-dot"></div>
+                    <span class="rec-text">REC</span>
+                </div>
             </div>
         </div>
         
@@ -576,7 +636,6 @@
                 </div>
             </div>
             
-            <!-- Before start: Start + Locate -->
             <div class="btn-row" id="btnRowIdle">
                 <button class="btn btn-primary" onclick="startTracking()">
                     <span class="btn-icon">
@@ -584,7 +643,7 @@
                     </span>
                     <span>Start</span>
                 </button>
-                <button class="btn btn-icon-only" onclick="recenterMap()" title="Center on location">
+                <button class="btn btn-icon-only" onclick="recenterMap()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"/>
                         <circle cx="12" cy="12" r="6"/>
@@ -597,7 +656,6 @@
                 </button>
             </div>
             
-            <!-- During activity: Pause + Stop -->
             <div class="btn-row" id="btnRowActive" style="display:none">
                 <button class="btn btn-primary" id="pauseBtn" onclick="togglePause()">
                     <span class="btn-icon" id="pauseIcon">
@@ -605,7 +663,7 @@
                     </span>
                     <span id="pauseLabel">Pause</span>
                 </button>
-                <button class="btn btn-icon-only" style="background: rgba(255, 71, 87, 0.2); border-color: rgba(255, 71, 87, 0.3);" onclick="finishTracking()" title="Finish">
+                <button class="btn btn-icon-only" style="background: rgba(255, 71, 87, 0.2); border-color: rgba(255, 71, 87, 0.3);" onclick="finishTracking()">
                     <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--danger);">
                         <rect x="6" y="6" width="12" height="12" rx="2"/>
                     </svg>
@@ -614,7 +672,6 @@
         </div>
     </div>
     
-    <!-- FINISH SCREEN -->
     <div class="screen hidden" id="finishScreen">
         <div class="finish-header">
             <div class="finish-title">Activity Complete</div>
@@ -675,6 +732,11 @@
         </div>
     </div>
     
+    <div class="matching-badge" id="matchingBadge">
+        <div class="spinner"></div>
+        <span class="matching-badge-text">Snapping to roads...</span>
+    </div>
+    
     <div class="toast" id="toast">
         <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
         <span id="toastText">Saved</span>
@@ -683,17 +745,227 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
+        // ============================================================
+        // KALMAN FILTER — сглаживание GPS-шума
+        // ============================================================
+        class KalmanFilter {
+            constructor(processNoise = 0.00001, measurementNoise = 0.0001) {
+                this.Q = processNoise;
+                this.R = measurementNoise;
+                this.P = [[1, 0], [0, 1]];
+                this.X = [0, 0];
+                this.initialized = false;
+            }
+            
+            filter(lat, lng) {
+                if (!this.initialized) {
+                    this.X = [lat, lng];
+                    this.initialized = true;
+                    return { lat, lng };
+                }
+                
+                // Predict
+                const P_pred = [
+                    [this.P[0][0] + this.Q, this.P[0][1]],
+                    [this.P[1][0], this.P[1][1] + this.Q]
+                ];
+                
+                // Update
+                const K = [
+                    [P_pred[0][0] / (P_pred[0][0] + this.R), 0],
+                    [0, P_pred[1][1] / (P_pred[1][1] + this.R)]
+                ];
+                
+                const y = [lat - this.X[0], lng - this.X[1]];
+                
+                this.X = [
+                    this.X[0] + K[0][0] * y[0],
+                    this.X[1] + K[1][1] * y[1]
+                ];
+                
+                this.P = [
+                    [(1 - K[0][0]) * P_pred[0][0], 0],
+                    [0, (1 - K[1][1]) * P_pred[1][1]]
+                ];
+                
+                return { lat: this.X[0], lng: this.X[1] };
+            }
+            
+            reset() {
+                this.P = [[1, 0], [0, 1]];
+                this.X = [0, 0];
+                this.initialized = false;
+            }
+        }
+        
+        // ============================================================
+        // AUDIO KEEP-ALIVE — не даёт Safari убить вкладку в фоне
+        // ============================================================
+        let audioCtx = null;
+        let audioSource = null;
+        
+        function startAudioKeepAlive() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Создаём тишину с почти нулевой громкостью
+                const bufferSize = 4096;
+                audioSource = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+                
+                audioSource.onaudioprocess = (e) => {
+                    const output = e.outputBuffer.getChannelData(0);
+                    for (let i = 0; i < output.length; i++) {
+                        output[i] = 0.0000001; // почти тишина
+                    }
+                };
+                
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.001;
+                
+                audioSource.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                console.log('🔊 Audio keep-alive started');
+            } catch (e) {
+                console.warn('Audio keep-alive failed:', e);
+            }
+        }
+        
+        function stopAudioKeepAlive() {
+            if (audioSource) {
+                audioSource.disconnect();
+                audioSource = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+        }
+        
+        // ============================================================
+        // GPS UTILS
+        // ============================================================
+        function haversineDistance(p1, p2) {
+            const R = 6371000; // метры
+            const lat1 = p1.lat * Math.PI / 180;
+            const lat2 = p2.lat * Math.PI / 180;
+            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+            const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+        
+        // ============================================================
+        // MAP MATCHING через OSRM (привязка к дорогам)
+        // ============================================================
+        async function snapToRoad(points, profile = 'foot') {
+            if (points.length < 2) return points;
+            
+            // OSRM лимит ~100 точек за запрос, упрощаем если нужно
+            let simplified = points;
+            if (points.length > 80) {
+                simplified = simplifyTrack(points, 0.00003);
+            }
+            
+            const coords = simplified.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+            const radiuses = simplified.map(() => 30).join(';'); // радиус поиска дороги 30м
+            
+            const url = `https://router.project-osrm.org/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
+            
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
+                    // Берём первое совпадение
+                    const geometry = data.matchings[0].geometry;
+                    if (geometry && geometry.coordinates) {
+                        return geometry.coordinates.map(c => ({
+                            lat: c[1],
+                            lng: c[0],
+                            t: Date.now()
+                        }));
+                    }
+                }
+            } catch (e) {
+                console.warn('Map matching failed, using raw points:', e);
+            }
+            
+            return points;
+        }
+        
+        function simplifyTrack(points, tolerance = 0.0001) {
+            if (points.length <= 2) return points;
+            
+            let maxDist = 0, maxIndex = 0;
+            const start = points[0], end = points[points.length - 1];
+            
+            for (let i = 1; i < points.length - 1; i++) {
+                const dist = perpendicularDistance(points[i], start, end);
+                if (dist > maxDist) { maxDist = dist; maxIndex = i; }
+            }
+            
+            if (maxDist > tolerance) {
+                const left = simplifyTrack(points.slice(0, maxIndex + 1), tolerance);
+                const right = simplifyTrack(points.slice(maxIndex), tolerance);
+                return left.slice(0, -1).concat(right);
+            }
+            return [start, end];
+        }
+        
+        function perpendicularDistance(point, lineStart, lineEnd) {
+            const dx = lineEnd.lng - lineStart.lng;
+            const dy = lineEnd.lat - lineStart.lat;
+            const mag = Math.sqrt(dx * dx + dy * dy);
+            if (mag === 0) return Math.sqrt((point.lng - lineStart.lng)**2 + (point.lat - lineStart.lat)**2);
+            const u = ((point.lng - lineStart.lng) * dx + (point.lat - lineStart.lat) * dy) / (mag * mag);
+            const x = lineStart.lng + u * dx;
+            const y = lineStart.lat + u * dy;
+            return Math.sqrt((point.lng - x)**2 + (point.lat - y)**2);
+        }
+        
+        // ============================================================
+        // LOCAL STORAGE — сохранение трека чтобы не потерять
+        // ============================================================
+        function saveRouteToStorage() {
+            try {
+                localStorage.setItem('traila_route', JSON.stringify(route));
+                localStorage.setItem('traila_start', startTime);
+            } catch (e) {}
+        }
+        
+        function loadRouteFromStorage() {
+            try {
+                const saved = localStorage.getItem('traila_route');
+                if (saved) return JSON.parse(saved);
+            } catch (e) {}
+            return null;
+        }
+        
+        function clearRouteStorage() {
+            localStorage.removeItem('traila_route');
+            localStorage.removeItem('traila_start');
+        }
+        
+        // ============================================================
+        // MAIN APP STATE
+        // ============================================================
         let mainMap, cardMap;
         let polyline, glowLine;
         let cardPolyline, cardGlow;
         let watchId;
-        let route = [];
+        let route = [];           // сырые отфильтрованные точки
+        let matchedRoute = null;  // точки после map matching
         let startTime, endTime, pausedDuration = 0, pauseStart = null;
         let isTracking = false;
         let isPaused = false;
         let timerInterval;
         let lastKnownPosition = null;
         let locationMarker = null;
+        let kalmanLat = new KalmanFilter(0.00001, 0.0001);
+        let kalmanLng = new KalmanFilter(0.00001, 0.0001);
+        let lastAcceptedPoint = null;
+        let activityProfile = 'foot'; // 'foot' или 'bike'
         
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -702,6 +974,31 @@
             markerColor: '#c4f04d'
         };
         
+        // ============================================================
+        // GPS QUALITY INDICATOR
+        // ============================================================
+        function updateGPSIndicator(accuracy) {
+            const indicator = document.getElementById('gpsIndicator');
+            const text = document.getElementById('gpsText');
+            
+            indicator.classList.add('active');
+            indicator.classList.remove('good', 'medium', 'bad');
+            
+            if (accuracy <= 10) {
+                indicator.classList.add('good');
+                text.textContent = `${Math.round(accuracy)}m`;
+            } else if (accuracy <= 25) {
+                indicator.classList.add('medium');
+                text.textContent = `${Math.round(accuracy)}m`;
+            } else {
+                indicator.classList.add('bad');
+                text.textContent = `${Math.round(accuracy)}m`;
+            }
+        }
+        
+        // ============================================================
+        // MAP INIT
+        // ============================================================
         function initMainMap() {
             mainMap = L.map('map', {
                 zoomControl: false,
@@ -726,6 +1023,17 @@
                 lineJoin: 'round'
             }).addTo(mainMap);
             
+            // Восстановить предыдущий трек если есть
+            const saved = loadRouteFromStorage();
+            if (saved && saved.length > 0) {
+                route = saved;
+                route.forEach(p => {
+                    polyline.addLatLng([p.lat, p.lng]);
+                    glowLine.addLatLng([p.lat, p.lng]);
+                });
+                updateLiveStats();
+            }
+            
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
@@ -745,28 +1053,17 @@
                         lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17, { animate: true });
                         
-                        // Add/update location marker (simple, no animation)
-                        if (locationMarker) {
-                            mainMap.removeLayer(locationMarker);
-                        }
+                        if (locationMarker) mainMap.removeLayer(locationMarker);
                         
                         const markerIcon = L.divIcon({
                             className: '',
-                            html: `<div style="
-                                width: 16px;
-                                height: 16px;
-                                border-radius: 50%;
-                                background: ${themeConfig.markerColor};
-                                border: 3px solid #fff;
-                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                            "></div>`,
+                            html: `<div style="width:16px;height:16px;border-radius:50%;background:${themeConfig.markerColor};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
                             iconSize: [16, 16],
                             iconAnchor: [8, 8]
                         });
                         
                         locationMarker = L.marker([lastKnownPosition.lat, lastKnownPosition.lng], { icon: markerIcon }).addTo(mainMap);
                         
-                        // Remove marker after 3 seconds
                         setTimeout(() => {
                             if (locationMarker) {
                                 mainMap.removeLayer(locationMarker);
@@ -774,7 +1071,7 @@
                             }
                         }, 3000);
                     },
-                    (err) => {
+                    () => {
                         if (lastKnownPosition) {
                             mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true });
                         }
@@ -784,18 +1081,29 @@
             }
         }
         
+        // ============================================================
+        // TRACKING
+        // ============================================================
         function startTracking() {
             if (!navigator.geolocation) {
                 showToast('Geolocation not supported');
                 return;
             }
             
+            // Запускаем audio keep-alive чтобы Safari не убил вкладку
+            startAudioKeepAlive();
+            
             isTracking = true;
             isPaused = false;
             route = [];
+            matchedRoute = null;
             startTime = Date.now();
             pausedDuration = 0;
             pauseStart = null;
+            
+            kalmanLat.reset();
+            kalmanLng.reset();
+            lastAcceptedPoint = null;
             
             document.getElementById('btnRowIdle').style.display = 'none';
             document.getElementById('btnRowActive').style.display = 'flex';
@@ -803,22 +1111,112 @@
             
             timerInterval = setInterval(updateLiveStats, 1000);
             
+            // Более агрессивные настройки для фона
             watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    
-                    if (!isPaused) {
-                        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
-                        route.push(p);
-                        polyline.addLatLng([p.lat, p.lng]);
-                        glowLine.addLatLng([p.lat, p.lng]);
-                    }
-                    mainMap.panTo([pos.coords.latitude, pos.coords.longitude], { animate: true, duration: 0.5 });
-                    updateLiveStats();
+                handleGPSUpdate,
+                (err) => {
+                    console.warn('GPS error:', err);
+                    // Если watchPosition умер — пробуем getCurrentPosition
+                    setTimeout(() => {
+                        if (isTracking) {
+                            navigator.geolocation.getCurrentPosition(
+                                handleGPSUpdate,
+                                () => {},
+                                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                            );
+                        }
+                    }, 2000);
                 },
-                (err) => showToast('GPS error: ' + err.message),
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+                { 
+                    enableHighAccuracy: true, 
+                    maximumAge: 0, 
+                    timeout: 20000 
+                }
             );
+            
+            // Дополнительный polling каждые 3 секунды как страховка
+            // (на случай если watchPosition замолчит в фоне)
+            startFallbackPolling();
+        }
+        
+        let fallbackInterval = null;
+        
+        function startFallbackPolling() {
+            if (fallbackInterval) clearInterval(fallbackInterval);
+            fallbackInterval = setInterval(() => {
+                if (!isTracking) {
+                    clearInterval(fallbackInterval);
+                    fallbackInterval = null;
+                    return;
+                }
+                
+                // Если давно не было обновлений — запрашиваем позицию принудительно
+                const lastPointTime = route.length > 0 ? route[route.length - 1].t : startTime;
+                const timeSinceLastPoint = Date.now() - lastPointTime;
+                
+                if (timeSinceLastPoint > 8000) {
+                    navigator.geolocation.getCurrentPosition(
+                        handleGPSUpdate,
+                        () => {},
+                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                    );
+                }
+            }, 3000);
+        }
+        
+        function handleGPSUpdate(pos) {
+            const { latitude, longitude, accuracy } = pos.coords;
+            
+            lastKnownPosition = { lat: latitude, lng: longitude };
+            
+            // Обновляем индикатор GPS
+            updateGPSIndicator(accuracy);
+            
+            if (isPaused) {
+                mainMap.panTo([latitude, longitude], { animate: true, duration: 0.5 });
+                return;
+            }
+            
+            // ФИЛЬТР 1: Отбрасываем точки с плохой точностью (> 30м)
+            if (accuracy > 30) {
+                console.log('Rejected: accuracy', accuracy);
+                return;
+            }
+            
+            // ФИЛЬТР 2: Kalman filter для сглаживания
+            const filtered = {
+                lat: kalmanLat.filter(latitude, longitude).lat,
+                lng: kalmanLng.filter(longitude, latitude).lng,
+                t: Date.now(),
+                accuracy: accuracy
+            };
+            
+            // ФИЛЬТР 3: Проверяем на аномальные скачки (> 100м за одно обновление)
+            if (lastAcceptedPoint) {
+                const dist = haversineDistance(lastAcceptedPoint, filtered);
+                if (dist > 100) {
+                    console.log('Rejected: jump', dist);
+                    return;
+                }
+                // ФИЛЬТР 4: Слишком близкие точки (< 2м) — пропускаем
+                if (dist < 2) {
+                    return;
+                }
+            }
+            
+            // Приняли точку
+            lastAcceptedPoint = filtered;
+            route.push(filtered);
+            
+            polyline.addLatLng([filtered.lat, filtered.lng]);
+            glowLine.addLatLng([filtered.lat, filtered.lng]);
+            
+            mainMap.panTo([filtered.lat, filtered.lng], { animate: true, duration: 0.5 });
+            
+            // Сохраняем в localStorage
+            saveRouteToStorage();
+            
+            updateLiveStats();
         }
         
         function togglePause() {
@@ -842,15 +1240,22 @@
             }
         }
         
-        function finishTracking() {
+        async function finishTracking() {
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
+            }
+            if (fallbackInterval) {
+                clearInterval(fallbackInterval);
+                fallbackInterval = null;
             }
             if (timerInterval) {
                 clearInterval(timerInterval);
                 timerInterval = null;
             }
+            
+            stopAudioKeepAlive();
+            
             isTracking = false;
             isPaused = false;
             endTime = Date.now();
@@ -858,7 +1263,26 @@
             document.getElementById('btnRowIdle').style.display = 'flex';
             document.getElementById('btnRowActive').style.display = 'none';
             document.getElementById('recBadge').classList.remove('active');
+            document.getElementById('gpsIndicator').classList.remove('active');
             
+            // MAP MATCHING — привязываем к дорогам
+            if (route.length >= 2) {
+                document.getElementById('matchingBadge').classList.add('active');
+                
+                try {
+                    matchedRoute = await snapToRoad(route, activityProfile);
+                    console.log('Map matching done:', matchedRoute.length, 'points');
+                } catch (e) {
+                    console.warn('Map matching failed, using raw route');
+                    matchedRoute = route;
+                }
+                
+                document.getElementById('matchingBadge').classList.remove('active');
+            } else {
+                matchedRoute = route;
+            }
+            
+            clearRouteStorage();
             showFinishScreen();
         }
         
@@ -866,6 +1290,7 @@
             document.getElementById('finishScreen').classList.add('hidden');
             document.getElementById('trackingScreen').classList.remove('hidden');
             route = [];
+            matchedRoute = null;
             polyline.setLatLngs([]);
             glowLine.setLatLngs([]);
             updateLiveStats();
@@ -873,37 +1298,48 @@
                 cardMap.remove();
                 cardMap = null;
             }
+            clearRouteStorage();
+        }
+        
+        function getElapsedTime() {
+            if (!startTime) return 0;
+            let elapsed = Math.floor(((endTime || Date.now()) - startTime) / 1000);
+            if (isPaused && pauseStart) {
+                elapsed -= Math.floor((Date.now() - pauseStart) / 1000);
+            }
+            elapsed -= Math.floor(pausedDuration / 1000);
+            return Math.max(0, elapsed);
+        }
+        
+        function calcDistance(pts) {
+            if (!pts || pts.length < 2) return 0;
+            let total = 0;
+            for (let i = 1; i < pts.length; i++) {
+                total += haversineDistance(pts[i-1], pts[i]);
+            }
+            return total / 1000; // в км
         }
         
         function updateLiveStats() {
             const d = calcDistance(route);
             document.getElementById('distance').textContent = d.toFixed(2);
             
-            if (startTime) {
-                let elapsed = Math.floor((Date.now() - startTime) / 1000);
-                if (isPaused && pauseStart) {
-                    elapsed -= Math.floor((Date.now() - pauseStart) / 1000);
-                }
-                elapsed -= Math.floor(pausedDuration / 1000);
-                if (elapsed < 0) elapsed = 0;
-                
-                document.getElementById('time').textContent = fmtTime(elapsed);
-                
-                if (d > 0.02) {
-                    const pace = elapsed / d;
-                    document.getElementById('pace').textContent = fmtPace(pace);
-                }
+            const elapsed = getElapsedTime();
+            document.getElementById('time').textContent = fmtTime(elapsed);
+            
+            if (d > 0.02) {
+                const pace = elapsed / d;
+                document.getElementById('pace').textContent = fmtPace(pace);
             }
         }
         
-        function showFinishScreen() {
+        async function showFinishScreen() {
             document.getElementById('trackingScreen').classList.add('hidden');
             document.getElementById('finishScreen').classList.remove('hidden');
             
-            const d = calcDistance(route);
-            let elapsed = Math.floor(((endTime || Date.now()) - startTime) / 1000);
-            elapsed -= Math.floor(pausedDuration / 1000);
-            if (elapsed < 0) elapsed = 0;
+            const displayRoute = matchedRoute || route;
+            const d = calcDistance(displayRoute);
+            const elapsed = getElapsedTime();
             
             document.getElementById('cardDistance').textContent = d.toFixed(2);
             document.getElementById('cardTime').textContent = fmtTime(elapsed);
@@ -933,9 +1369,11 @@
             
             L.tileLayer(themeConfig.tileUrl, { maxZoom: 19 }).addTo(cardMap);
             
-            if (route.length > 0) {
-                const distance = calcDistance(route);
-                const simplifiedRoute = distance > 3 ? simplifyTrack(route, 0.00005) : route;
+            const displayRoute = matchedRoute || route;
+            
+            if (displayRoute.length > 0) {
+                const distance = calcDistance(displayRoute);
+                const simplifiedRoute = distance > 3 ? simplifyTrack(displayRoute, 0.00005) : displayRoute;
                 
                 cardGlow = L.polyline([], {
                     color: themeConfig.glowColor,
@@ -960,56 +1398,16 @@
                 
                 const bounds = cardPolyline.getBounds();
                 if (bounds.isValid()) {
-                    cardMap.fitBounds(bounds, { 
-                        padding: [30, 30],
-                        maxZoom: 18
-                    });
+                    cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
                 }
                 
                 setTimeout(() => cardMap.invalidateSize(), 100);
             }
         }
         
-        function simplifyTrack(points, tolerance = 0.0001) {
-            if (points.length <= 2) return points;
-            
-            let maxDist = 0;
-            let maxIndex = 0;
-            const start = points[0];
-            const end = points[points.length - 1];
-            
-            for (let i = 1; i < points.length - 1; i++) {
-                const dist = perpendicularDistance(points[i], start, end);
-                if (dist > maxDist) {
-                    maxDist = dist;
-                    maxIndex = i;
-                }
-            }
-            
-            if (maxDist > tolerance) {
-                const left = simplifyTrack(points.slice(0, maxIndex + 1), tolerance);
-                const right = simplifyTrack(points.slice(maxIndex), tolerance);
-                return left.slice(0, -1).concat(right);
-            } else {
-                return [start, end];
-            }
-        }
-        
-        function perpendicularDistance(point, lineStart, lineEnd) {
-            const dx = lineEnd.lng - lineStart.lng;
-            const dy = lineEnd.lat - lineStart.lat;
-            const mag = Math.sqrt(dx * dx + dy * dy);
-            
-            if (mag === 0) return Math.sqrt((point.lng - lineStart.lng)**2 + (point.lat - lineStart.lat)**2);
-            
-            const u = ((point.lng - lineStart.lng) * dx + (point.lat - lineStart.lat) * dy) / (mag * mag);
-            const x = lineStart.lng + u * dx;
-            const y = lineStart.lat + u * dy;
-            
-            return Math.sqrt((point.lng - x)**2 + (point.lat - y)**2);
-        }
-        
-        // ============ SCREENSHOT RENDERING ============
+        // ============================================================
+        // SCREENSHOT RENDERING
+        // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
             const rect = card.getBoundingClientRect();
@@ -1021,7 +1419,6 @@
             const ctx = canvas.getContext('2d');
             ctx.scale(scale, scale);
             
-            // Draw background gradient
             const gradient = ctx.createLinearGradient(0, 0, rect.width, rect.height);
             gradient.addColorStop(0, '#0f0f14');
             gradient.addColorStop(0.5, '#1a0f24');
@@ -1029,7 +1426,6 @@
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, rect.width, rect.height);
             
-            // Draw mesh gradient
             const meshGradient1 = ctx.createRadialGradient(
                 rect.width * 0.2, rect.height * 0.3, 0,
                 rect.width * 0.2, rect.height * 0.3, rect.width * 0.4
@@ -1048,31 +1444,22 @@
             ctx.fillStyle = meshGradient2;
             ctx.fillRect(0, 0, rect.width, rect.height);
             
-            // Render map
-            if (cardMap && route.length > 0) {
+            if (cardMap && (matchedRoute || route).length > 0) {
                 const mapCanvas = await renderLeafletMapToCanvas(cardMap, document.getElementById('cardMap'));
                 const mapRect = document.getElementById('cardMap').getBoundingClientRect();
-                const mapOffset = {
-                    x: mapRect.left - rect.left,
-                    y: mapRect.top - rect.top
-                };
-                
-                ctx.drawImage(mapCanvas, mapOffset.x, mapOffset.y, mapRect.width, mapRect.height);
+                ctx.drawImage(mapCanvas, mapRect.left - rect.left, mapRect.top - rect.top, mapRect.width, mapRect.height);
             }
             
-            // Draw logo
             ctx.font = '600 13px "Space Grotesk", sans-serif';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.textAlign = 'left';
             ctx.fillText('● TRAILA', 28, 40);
             
-            // Draw date
             ctx.font = '500 11px "Inter", sans-serif';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.textAlign = 'right';
             ctx.fillText(document.getElementById('cardDate').textContent, rect.width - 28, 40);
             
-            // Draw stats
             const statsY = rect.height - 60;
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
             ctx.lineWidth = 1;
@@ -1091,7 +1478,6 @@
             
             statsData.forEach((stat, i) => {
                 const x = 28 + i * colWidth;
-                
                 ctx.font = '600 9px "Inter", sans-serif';
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
                 ctx.textAlign = 'left';
@@ -1131,10 +1517,7 @@
             const promises = [];
             
             tiles.forEach(tile => {
-                const style = tile.style;
-                const src = tile.src;
-                
-                const transform = style.transform || style.webkitTransform || '';
+                const transform = tile.style.transform || tile.style.webkitTransform || '';
                 const match = transform.match(/translate3d\(([^,]+),\s*([^,]+),\s*([^)]+)\)/);
                 if (!match) return;
                 
@@ -1149,23 +1532,26 @@
                         resolve();
                     };
                     img.onerror = () => resolve();
-                    img.src = src;
+                    img.src = tile.src;
                 }));
             });
             
             await Promise.all(promises);
             
-            if (cardGlow && route.length > 0) {
+            const displayRoute = matchedRoute || route;
+            const distance = calcDistance(displayRoute);
+            
+            if (cardGlow && displayRoute.length > 0) {
                 drawPolylineOnCanvas(ctx, map, cardGlow, {
                     color: themeConfig.glowColor,
-                    weight: calcDistance(route) > 5 ? 6 : 10,
-                    opacity: calcDistance(route) > 5 ? 0.4 : 0.3
+                    weight: distance > 5 ? 6 : 10,
+                    opacity: distance > 5 ? 0.4 : 0.3
                 });
             }
-            if (cardPolyline && route.length > 0) {
+            if (cardPolyline && displayRoute.length > 0) {
                 drawPolylineOnCanvas(ctx, map, cardPolyline, {
                     color: themeConfig.lineColor,
-                    weight: calcDistance(route) > 5 ? 3 : 4,
+                    weight: distance > 5 ? 3 : 4,
                     opacity: 1
                 });
             }
@@ -1199,7 +1585,6 @@
             
             try {
                 const canvas = await captureCardAsImage();
-                
                 canvas.toBlob((blob) => {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1223,22 +1608,15 @@
             
             try {
                 const canvas = await captureCardAsImage();
-                
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
                     
                     if (navigator.share && navigator.canShare({ files: [file] })) {
                         try {
-                            await navigator.share({
-                                files: [file],
-                                title: 'Traila Activity',
-                                text: 'Check out my route!'
-                            });
+                            await navigator.share({ files: [file], title: 'Traila Activity' });
                             showToast('Shared');
                         } catch (e) {
-                            if (e.name !== 'AbortError') {
-                                fallbackShare(canvas);
-                            }
+                            if (e.name !== 'AbortError') fallbackShare(canvas);
                         }
                     } else {
                         fallbackShare(canvas);
@@ -1262,21 +1640,6 @@
             });
         }
         
-        function calcDistance(pts) {
-            if (pts.length < 2) return 0;
-            let total = 0;
-            const R = 6371;
-            for (let i = 1; i < pts.length; i++) {
-                const lat1 = pts[i-1].lat * Math.PI / 180;
-                const lat2 = pts[i].lat * Math.PI / 180;
-                const dLat = (pts[i].lat - pts[i-1].lat) * Math.PI / 180;
-                const dLon = (pts[i].lng - pts[i-1].lng) * Math.PI / 180;
-                const a = Math.sin(dLat/2)**2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2)**2;
-                total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            }
-            return total;
-        }
-        
         function fmtTime(sec) {
             const h = Math.floor(sec / 3600);
             const m = Math.floor((sec % 3600) / 60);
@@ -1297,6 +1660,20 @@
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 2200);
         }
+        
+        // ============================================================
+        // VISIBILITY CHANGE — восстановление при возврате в вкладку
+        // ============================================================
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && isTracking) {
+                // Вернулись в приложение — запрашиваем позицию
+                navigator.geolocation.getCurrentPosition(
+                    handleGPSUpdate,
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            }
+        });
         
         window.onload = initMainMap;
     </script>
