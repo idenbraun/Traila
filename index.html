@@ -7,10 +7,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Traila</title>
     
+    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- html2canvas для надежных скриншотов без белого фона -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -54,7 +58,7 @@
             position: absolute;
             inset: 0;
             z-index: 1;
-            background: #0a0a0b;
+            background: #0a0a0b; /* Фолбэк, если карта грузится */
         }
         
         #map, #map * {
@@ -529,13 +533,11 @@
         .loading-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(10, 10, 11, 0.85);
+            background: rgba(10, 10, 11, 0.8);
             backdrop-filter: blur(8px);
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 12px;
             z-index: 100;
             opacity: 0;
             pointer-events: none;
@@ -546,12 +548,6 @@
         .loading-overlay.active {
             opacity: 1;
             pointer-events: auto;
-        }
-
-        .loading-text {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text);
         }
         
         .spinner {
@@ -702,7 +698,6 @@
                         <div id="cardMap"></div>
                         <div class="loading-overlay" id="cardLoading">
                             <div class="spinner"></div>
-                            <span class="loading-text">Generating preview...</span>
                         </div>
                     </div>
                     
@@ -974,6 +969,7 @@
         let activityProfile = 'foot';
         let currentHeading = 0;
         
+        // НАДЕЖНЫЕ ТЁМНЫЕ ТАЙЛЫ (CartoDB Dark), работают через Cloudflare в РФ
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
             subdomains: ['a', 'b', 'c', 'd'],
@@ -1096,6 +1092,7 @@
                 attributionControl: false
             }).setView([55.7558, 37.6173], 15);
             
+            // Добавлены subdomains и crossOrigin для стабильности и скриншотов
             L.tileLayer(themeConfig.tileUrl, { 
                 maxZoom: 19,
                 subdomains: themeConfig.subdomains,
@@ -1235,7 +1232,7 @@
         }
         
         function handleGPSUpdate(pos) {
-            if (!mainMap) return;
+            if (!mainMap) return; // Защита от вызова до инициализации карты
             
             const { latitude, longitude, accuracy, heading } = pos.coords;
             
@@ -1420,33 +1417,9 @@
             const opts = { day: 'numeric', month: 'short', year: 'numeric' };
             document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', opts).toUpperCase();
             
-            // Инициализируем карту и ждем её полной загрузки
-            initCardMap();
+            setTimeout(() => initCardMap(), 300);
         }
         
-        // Функция ожидания загрузки тайлов
-        function waitForMapTiles(map) {
-            return new Promise((resolve) => {
-                // Если карта уже загружена, возвращаем сразу
-                if (map._loaded) {
-                    setTimeout(resolve, 500); // Небольшой буфер для отрисовки
-                    return;
-                }
-                
-                let timeout = setTimeout(() => {
-                    map.off('load', onLoad);
-                    resolve();
-                }, 5000); // Максимум 5 секунд ожидания
-                
-                const onLoad = () => {
-                    clearTimeout(timeout);
-                    setTimeout(resolve, 500);
-                };
-                
-                map.once('load', onLoad);
-            });
-        }
-
         function initCardMap() {
             if (cardMap) cardMap.remove();
             
@@ -1507,47 +1480,29 @@
         }
         
         // ============================================================
-        // SCREENSHOT RENDERING (УЛУЧШЕННАЯ ВЕРСИЯ)
+        // SCREENSHOT RENDERING
         // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
-            const loading = document.getElementById('cardLoading');
             
-            // 1. Принудительно обновляем размер карты перед снимком
             if (cardMap) {
                 cardMap.invalidateSize();
+                await new Promise(resolve => setTimeout(resolve, 800));
             }
             
-            // 2. Ждем реальной загрузки тайлов, а не просто таймаут
-            loading.classList.add('active');
-            await waitForMapTiles(cardMap);
-            
             try {
-                // 3. Настройки html2canvas для максимальной совместимости
                 const canvas = await html2canvas(card, {
                     useCORS: true,
                     allowTaint: false,
-                    backgroundColor: '#0f0f14', // Гарантирует отсутствие прозрачности
-                    scale: window.devicePixelRatio * 2, // Максимальное качество
+                    backgroundColor: '#0f0f14', // Гарантирует отсутствие прозрачности/белого фона
+                    scale: 2,
                     logging: false,
-                    imageTimeout: 15000, // 15 сек на загрузку изображений
-                    removeContainer: false,
-                    onclone: (clonedDoc) => {
-                        // Фикс для клонированного DOM: гарантируем размеры карты
-                        const clonedMapDiv = clonedDoc.getElementById('cardMap');
-                        if (clonedMapDiv) {
-                            clonedMapDiv.style.width = '100%';
-                            clonedMapDiv.style.height = '100%';
-                            clonedMapDiv.style.position = 'relative';
-                        }
-                    }
+                    ignoreElements: (element) => element.id === 'cardLoading'
                 });
                 return canvas;
             } catch (e) {
                 console.error("html2canvas failed:", e);
-                throw new Error("Screenshot generation failed");
-            } finally {
-                loading.classList.remove('active');
+                throw e;
             }
         }
         
@@ -1558,10 +1513,6 @@
             try {
                 const canvas = await captureCardAsImage();
                 canvas.toBlob((blob) => {
-                    if (!blob) {
-                        showToast('Error: Canvas is tainted (CORS)');
-                        return;
-                    }
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -1573,7 +1524,7 @@
                     showToast('Saved to downloads');
                 }, 'image/png');
             } catch (e) {
-                showToast('Export failed. Try again.');
+                showToast('Export failed');
                 console.error(e);
             } finally {
                 loading.classList.remove('active');
@@ -1587,11 +1538,6 @@
             try {
                 const canvas = await captureCardAsImage();
                 canvas.toBlob(async (blob) => {
-                    if (!blob) {
-                        showToast('Error: Canvas is tainted (CORS)');
-                        loading.classList.remove('active');
-                        return;
-                    }
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
                     
                     if (navigator.share && navigator.canShare({ files: [file] })) {
