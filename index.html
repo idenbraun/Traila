@@ -12,8 +12,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
-    
     <style>
         :root {
             --bg: #0a0a0b;
@@ -86,7 +84,7 @@
             justify-content: space-between;
         }
         
-        /* Top bar - logo and REC (NO BOX) */
+        /* Top bar */
         .top-bar {
             padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 0;
             display: flex;
@@ -147,7 +145,7 @@
             text-shadow: 0 2px 16px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.5);
         }
         
-        /* Bottom panel - TRANSPARENT, NO BLUR */
+        /* Bottom panel */
         .bottom-panel {
             position: relative;
             z-index: 20;
@@ -157,7 +155,7 @@
             gap: 12px;
         }
         
-        /* Stats - TRANSPARENT */
+        /* Stats */
         .stats-bento {
             display: flex;
             gap: 8px;
@@ -250,13 +248,6 @@
             box-shadow: 0 10px 40px -10px var(--accent), inset 0 1px 0 rgba(255,255,255,0.3);
         }
         
-        .btn-danger {
-            flex: 1;
-            background: var(--danger);
-            color: #fff;
-            box-shadow: 0 10px 40px -10px var(--danger);
-        }
-        
         .btn-icon-only {
             width: 62px;
             flex: none;
@@ -334,7 +325,7 @@
         .card {
             position: relative;
             width: 100%;
-            aspect-ratio: 4 / 5;
+            aspect-ratio: 1 / 1;
             border-radius: 28px;
             overflow: hidden;
             background: linear-gradient(160deg, #0f0f14 0%, #1a0f24 50%, #0f0f14 100%);
@@ -595,8 +586,13 @@
                 </button>
                 <button class="btn btn-icon-only" onclick="recenterMap()" title="Center on location">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="6"/>
+                        <circle cx="12" cy="12" r="2"/>
+                        <line x1="12" y1="2" x2="12" y2="4"/>
+                        <line x1="12" y1="20" x2="12" y2="22"/>
+                        <line x1="2" y1="12" x2="4" y2="12"/>
+                        <line x1="20" y1="12" x2="22" y2="12"/>
                     </svg>
                 </button>
             </div>
@@ -667,7 +663,7 @@
             </div>
         </div>
         
-        <div class="actions" id="actionButtons">
+        <div class="actions">
             <button class="btn-action btn-save" onclick="saveCard()">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 Save Image
@@ -697,6 +693,7 @@
         let isPaused = false;
         let timerInterval;
         let lastKnownPosition = null;
+        let locationMarker = null;
         
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -729,7 +726,6 @@
                 lineJoin: 'round'
             }).addTo(mainMap);
             
-            // Get initial location
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
@@ -750,7 +746,44 @@
                     (pos) => {
                         lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17, { animate: true });
+                        
+                        // Add/update location marker
+                        if (locationMarker) {
+                            mainMap.removeLayer(locationMarker);
+                        }
+                        
+                        const markerIcon = L.divIcon({
+                            className: '',
+                            html: `<div style="
+                                width: 20px;
+                                height: 20px;
+                                border-radius: 50%;
+                                background: ${themeConfig.markerColor};
+                                border: 3px solid #fff;
+                                box-shadow: 0 0 20px ${themeConfig.markerColor}, 0 0 40px ${themeConfig.markerColor};
+                                animation: markerPulse 2s ease-in-out infinite;
+                            "></div>
+                            <style>
+                                @keyframes markerPulse {
+                                    0%, 100% { transform: scale(1); opacity: 1; }
+                                    50% { transform: scale(1.2); opacity: 0.8; }
+                                }
+                            </style>`,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        
+                        locationMarker = L.marker([lastKnownPosition.lat, lastKnownPosition.lng], { icon: markerIcon }).addTo(mainMap);
+                        
                         showToast('Centered on your location');
+                        
+                        // Remove marker after 3 seconds
+                        setTimeout(() => {
+                            if (locationMarker) {
+                                mainMap.removeLayer(locationMarker);
+                                locationMarker = null;
+                            }
+                        }, 3000);
                     },
                     (err) => {
                         if (lastKnownPosition) {
@@ -900,15 +933,17 @@
         function initCardMap() {
             if (cardMap) cardMap.remove();
             
+            // DISABLE all interactions
             cardMap = L.map('cardMap', {
                 zoomControl: false,
                 attributionControl: false,
-                dragging: true,
-                scrollWheelZoom: true,
-                doubleClickZoom: true,
-                touchZoom: true,
+                dragging: false,
+                scrollWheelZoom: false,
+                doubleClickZoom: false,
+                touchZoom: false,
                 boxZoom: false,
-                keyboard: false
+                keyboard: false,
+                tap: false
             });
             
             L.tileLayer(themeConfig.tileUrl, { maxZoom: 19 }).addTo(cardMap);
@@ -916,7 +951,6 @@
             if (route.length > 0) {
                 const distance = calcDistance(route);
                 const simplifiedRoute = distance > 3 ? simplifyTrack(route, 0.00005) : route;
-                const padding = getOptimalPadding(distance);
                 
                 cardGlow = L.polyline([], {
                     color: themeConfig.glowColor,
@@ -941,26 +975,11 @@
                 
                 const bounds = cardPolyline.getBounds();
                 if (bounds.isValid()) {
-                    cardMap.fitBounds(bounds, { padding: padding });
-                }
-                
-                if (distance < 5 && simplifiedRoute.length > 0) {
-                    const startIcon = L.divIcon({
-                        className: '',
-                        html: `<div style="width:10px;height:10px;border-radius:50%;background:${themeConfig.markerColor};border:2px solid #fff;box-shadow:0 0 8px ${themeConfig.markerColor}"></div>`,
-                        iconSize: [10, 10]
+                    // Fit bounds with equal padding to keep square aspect
+                    cardMap.fitBounds(bounds, { 
+                        padding: [30, 30],
+                        maxZoom: 18
                     });
-                    L.marker([simplifiedRoute[0].lat, simplifiedRoute[0].lng], { icon: startIcon }).addTo(cardMap);
-                    
-                    if (simplifiedRoute.length > 1) {
-                        const last = simplifiedRoute[simplifiedRoute.length - 1];
-                        const endIcon = L.divIcon({
-                            className: '',
-                            html: `<div style="width:10px;height:10px;border-radius:50%;background:${themeConfig.markerColor};border:2px solid #fff;box-shadow:0 0 8px ${themeConfig.markerColor}"></div>`,
-                            iconSize: [10, 10]
-                        });
-                        L.marker([last.lat, last.lng], { icon: endIcon }).addTo(cardMap);
-                    }
                 }
                 
                 setTimeout(() => cardMap.invalidateSize(), 100);
@@ -1006,154 +1025,107 @@
             return Math.sqrt((point.lng - x)**2 + (point.lat - y)**2);
         }
         
-        function getOptimalPadding(distance) {
-            if (distance < 1) return [40, 40];
-            if (distance < 5) return [30, 30];
-            if (distance < 10) return [25, 25];
-            return [20, 20];
-        }
-        
         // ============ SCREENSHOT RENDERING ============
-        async function captureFullScreen() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
+        async function captureCardAsImage() {
+            const card = document.getElementById('card');
+            const rect = card.getBoundingClientRect();
             const scale = 2;
             
-            // Create temporary container
-            const container = document.createElement('div');
-            container.style.position = 'fixed';
-            container.style.top = '-9999px';
-            container.style.left = '-9999px';
-            container.style.width = width + 'px';
-            container.style.height = height + 'px';
-            container.style.background = 'linear-gradient(160deg, #0f0f14 0%, #1a0f24 50%, #0f0f14 100%)';
-            container.style.overflow = 'hidden';
-            container.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
-            container.style.color = '#fff';
-            container.style.letterSpacing = '-0.02em';
-            document.body.appendChild(container);
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width * scale;
+            canvas.height = rect.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
             
-            // Add mesh gradient
-            const mesh = document.createElement('div');
-            mesh.style.position = 'absolute';
-            mesh.style.top = '-50%';
-            mesh.style.left = '-50%';
-            mesh.style.width = '200%';
-            mesh.style.height = '200%';
-            mesh.style.background = 'radial-gradient(circle at 20% 30%, rgba(196, 240, 77, 0.15) 0%, transparent 40%), radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.2) 0%, transparent 40%)';
-            container.appendChild(mesh);
+            // Draw background gradient
+            const gradient = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+            gradient.addColorStop(0, '#0f0f14');
+            gradient.addColorStop(0.5, '#1a0f24');
+            gradient.addColorStop(1, '#0f0f14');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, rect.width, rect.height);
             
-            // Render map to canvas
-            let mapCanvas = null;
+            // Draw mesh gradient
+            const meshGradient1 = ctx.createRadialGradient(
+                rect.width * 0.2, rect.height * 0.3, 0,
+                rect.width * 0.2, rect.height * 0.3, rect.width * 0.4
+            );
+            meshGradient1.addColorStop(0, 'rgba(196, 240, 77, 0.15)');
+            meshGradient1.addColorStop(1, 'transparent');
+            ctx.fillStyle = meshGradient1;
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            
+            const meshGradient2 = ctx.createRadialGradient(
+                rect.width * 0.8, rect.height * 0.7, 0,
+                rect.width * 0.8, rect.height * 0.7, rect.width * 0.4
+            );
+            meshGradient2.addColorStop(0, 'rgba(139, 92, 246, 0.2)');
+            meshGradient2.addColorStop(1, 'transparent');
+            ctx.fillStyle = meshGradient2;
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            
+            // Render map
             if (cardMap && route.length > 0) {
-                mapCanvas = await renderLeafletMapToCanvas(cardMap, document.getElementById('cardMap'));
-            }
-            
-            // Add map canvas
-            if (mapCanvas) {
-                const mapDiv = document.createElement('div');
-                mapDiv.style.position = 'absolute';
-                mapDiv.style.top = '80px';
-                mapDiv.style.left = '20px';
-                mapDiv.style.right = '20px';
-                mapDiv.style.bottom = '180px';
-                mapDiv.style.borderRadius = '18px';
-                mapDiv.style.overflow = 'hidden';
+                const mapCanvas = await renderLeafletMapToCanvas(cardMap, document.getElementById('cardMap'));
+                const mapRect = document.getElementById('cardMap').getBoundingClientRect();
+                const mapOffset = {
+                    x: mapRect.left - rect.left,
+                    y: mapRect.top - rect.top
+                };
                 
-                const img = document.createElement('img');
-                img.src = mapCanvas.toDataURL('image/png');
-                img.style.width = '100%';
-                img.style.height = '100%';
-                img.style.display = 'block';
-                mapDiv.appendChild(img);
-                container.appendChild(mapDiv);
+                ctx.drawImage(mapCanvas, mapOffset.x, mapOffset.y, mapRect.width, mapRect.height);
             }
             
-            // Add logo
-            const logo = document.createElement('div');
-            logo.style.position = 'absolute';
-            logo.style.top = '28px';
-            logo.style.left = '28px';
-            logo.style.fontFamily = "'Space Grotesk', sans-serif";
-            logo.style.fontSize = '13px';
-            logo.style.fontWeight = '600';
-            logo.style.letterSpacing = '0.08em';
-            logo.style.textTransform = 'uppercase';
-            logo.style.opacity = '0.6';
-            logo.style.display = 'flex';
-            logo.style.alignItems = 'center';
-            logo.style.gap = '6px';
-            logo.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:currentColor"></span><span>Traila</span>';
-            container.appendChild(logo);
+            // Draw logo
+            ctx.font = '600 13px "Space Grotesk", sans-serif';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.textAlign = 'left';
+            ctx.fillText('● TRAILA', 28, 40);
             
-            // Add date
-            const date = document.createElement('div');
-            date.style.position = 'absolute';
-            date.style.top = '28px';
-            date.style.right = '28px';
-            date.style.fontSize = '11px';
-            date.style.fontWeight = '500';
-            date.style.opacity = '0.5';
-            date.style.letterSpacing = '0.05em';
-            date.textContent = document.getElementById('cardDate').textContent;
-            container.appendChild(date);
+            // Draw date
+            ctx.font = '500 11px "Inter", sans-serif';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.textAlign = 'right';
+            ctx.fillText(document.getElementById('cardDate').textContent, rect.width - 28, 40);
             
-            // Add stats
-            const stats = document.createElement('div');
-            stats.style.position = 'absolute';
-            stats.style.bottom = '40px';
-            stats.style.left = '28px';
-            stats.style.right = '28px';
-            stats.style.display = 'grid';
-            stats.style.gridTemplateColumns = 'repeat(3, 1fr)';
-            stats.style.gap = '16px';
-            stats.style.paddingTop = '20px';
-            stats.style.borderTop = '1px solid rgba(255,255,255,0.08)';
+            // Draw stats
+            const statsY = rect.height - 60;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(28, statsY);
+            ctx.lineTo(rect.width - 28, statsY);
+            ctx.stroke();
             
             const statsData = [
-                { label: 'Distance', value: document.getElementById('cardDistance').textContent, unit: 'km' },
-                { label: 'Time', value: document.getElementById('cardTime').textContent, unit: '' },
-                { label: 'Pace', value: document.getElementById('cardPace').textContent, unit: '/km' }
+                { label: 'DISTANCE', value: document.getElementById('cardDistance').textContent, unit: 'km' },
+                { label: 'TIME', value: document.getElementById('cardTime').textContent, unit: '' },
+                { label: 'PACE', value: document.getElementById('cardPace').textContent, unit: '/km' }
             ];
             
-            statsData.forEach(s => {
-                const stat = document.createElement('div');
-                stat.innerHTML = `
-                    <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;opacity:0.5;margin-bottom:6px">${s.label}</div>
-                    <div style="font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:24px;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">
-                        ${s.value}<span style="font-size:11px;font-weight:500;opacity:0.5;margin-left:2px">${s.unit}</span>
-                    </div>
-                `;
-                stats.appendChild(stat);
+            const colWidth = (rect.width - 56) / 3;
+            
+            statsData.forEach((stat, i) => {
+                const x = 28 + i * colWidth;
+                
+                ctx.font = '600 9px "Inter", sans-serif';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.textAlign = 'left';
+                ctx.fillText(stat.label, x, statsY + 20);
+                
+                ctx.font = '500 24px "Space Grotesk", sans-serif';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(stat.value, x, statsY + 48);
+                
+                if (stat.unit) {
+                    const valueWidth = ctx.measureText(stat.value).width;
+                    ctx.font = '500 11px "Inter", sans-serif';
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.fillText(stat.unit, x + valueWidth + 2, statsY + 48);
+                }
             });
             
-            container.appendChild(stats);
-            
-            // Render to image
-            try {
-                const dataUrl = await htmlToImage.toPng(container, {
-                    width: width,
-                    height: height,
-                    pixelRatio: scale,
-                    cacheBust: true,
-                });
-                
-                const img = new Image();
-                await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                    img.src = dataUrl;
-                });
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                canvas.getContext('2d').drawImage(img, 0, 0);
-                
-                return canvas;
-            } finally {
-                document.body.removeChild(container);
-            }
+            return canvas;
         }
         
         async function renderLeafletMapToCanvas(map, container) {
@@ -1242,7 +1214,7 @@
             loading.classList.add('active');
             
             try {
-                const canvas = await captureFullScreen();
+                const canvas = await captureCardAsImage();
                 
                 canvas.toBlob((blob) => {
                     const url = URL.createObjectURL(blob);
@@ -1266,7 +1238,7 @@
             loading.classList.add('active');
             
             try {
-                const canvas = await captureFullScreen();
+                const canvas = await captureCardAsImage();
                 
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
