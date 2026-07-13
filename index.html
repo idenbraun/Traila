@@ -325,7 +325,7 @@
         .card {
             position: relative;
             width: 100%;
-            aspect-ratio: 1 / 1;
+            aspect-ratio: 9 / 16;
             border-radius: 28px;
             overflow: hidden;
             background: linear-gradient(160deg, #0f0f14 0%, #1a0f24 50%, #0f0f14 100%);
@@ -745,7 +745,7 @@
                         lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17, { animate: true });
                         
-                        // Add location marker (same style as tracking)
+                        // Add/update location marker (simple, no animation)
                         if (locationMarker) {
                             mainMap.removeLayer(locationMarker);
                         }
@@ -753,15 +753,15 @@
                         const markerIcon = L.divIcon({
                             className: '',
                             html: `<div style="
-                                width: 12px;
-                                height: 12px;
+                                width: 16px;
+                                height: 16px;
                                 border-radius: 50%;
                                 background: ${themeConfig.markerColor};
-                                border: 2px solid #fff;
-                                box-shadow: 0 0 8px ${themeConfig.markerColor};
+                                border: 3px solid #fff;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                             "></div>`,
-                            iconSize: [12, 12],
-                            iconAnchor: [6, 6]
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
                         });
                         
                         locationMarker = L.marker([lastKnownPosition.lat, lastKnownPosition.lng], { icon: markerIcon }).addTo(mainMap);
@@ -1009,97 +1009,76 @@
             return Math.sqrt((point.lng - x)**2 + (point.lat - y)**2);
         }
         
-        // ============ FULL SCREEN SCREENSHOT ============
-        async function captureFullScreen() {
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
+        // ============ SCREENSHOT RENDERING ============
+        async function captureCardAsImage() {
+            const card = document.getElementById('card');
+            const rect = card.getBoundingClientRect();
             const scale = 2;
             
             const canvas = document.createElement('canvas');
-            canvas.width = screenWidth * scale;
-            canvas.height = screenHeight * scale;
+            canvas.width = rect.width * scale;
+            canvas.height = rect.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.scale(scale, scale);
             
-            // 1. Background gradient (same as card)
-            const gradient = ctx.createLinearGradient(0, 0, screenWidth, screenHeight);
+            // Draw background gradient
+            const gradient = ctx.createLinearGradient(0, 0, rect.width, rect.height);
             gradient.addColorStop(0, '#0f0f14');
             gradient.addColorStop(0.5, '#1a0f24');
             gradient.addColorStop(1, '#0f0f14');
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, screenWidth, screenHeight);
+            ctx.fillRect(0, 0, rect.width, rect.height);
             
-            // 2. Mesh gradient
-            const mg1 = ctx.createRadialGradient(
-                screenWidth * 0.2, screenHeight * 0.3, 0,
-                screenWidth * 0.2, screenHeight * 0.3, screenWidth * 0.4
+            // Draw mesh gradient
+            const meshGradient1 = ctx.createRadialGradient(
+                rect.width * 0.2, rect.height * 0.3, 0,
+                rect.width * 0.2, rect.height * 0.3, rect.width * 0.4
             );
-            mg1.addColorStop(0, 'rgba(196, 240, 77, 0.15)');
-            mg1.addColorStop(1, 'transparent');
-            ctx.fillStyle = mg1;
-            ctx.fillRect(0, 0, screenWidth, screenHeight);
+            meshGradient1.addColorStop(0, 'rgba(196, 240, 77, 0.15)');
+            meshGradient1.addColorStop(1, 'transparent');
+            ctx.fillStyle = meshGradient1;
+            ctx.fillRect(0, 0, rect.width, rect.height);
             
-            const mg2 = ctx.createRadialGradient(
-                screenWidth * 0.8, screenHeight * 0.7, 0,
-                screenWidth * 0.8, screenHeight * 0.7, screenWidth * 0.4
+            const meshGradient2 = ctx.createRadialGradient(
+                rect.width * 0.8, rect.height * 0.7, 0,
+                rect.width * 0.8, rect.height * 0.7, rect.width * 0.4
             );
-            mg2.addColorStop(0, 'rgba(139, 92, 246, 0.2)');
-            mg2.addColorStop(1, 'transparent');
-            ctx.fillStyle = mg2;
-            ctx.fillRect(0, 0, screenWidth, screenHeight);
+            meshGradient2.addColorStop(0, 'rgba(139, 92, 246, 0.2)');
+            meshGradient2.addColorStop(1, 'transparent');
+            ctx.fillStyle = meshGradient2;
+            ctx.fillRect(0, 0, rect.width, rect.height);
             
-            // 3. Render the track on a hidden map that fits the entire track
-            let trackCanvas = null;
-            if (route.length >= 2) {
-                trackCanvas = await renderTrackToCanvas(route, screenWidth, screenHeight);
+            // Render map
+            if (cardMap && route.length > 0) {
+                const mapCanvas = await renderLeafletMapToCanvas(cardMap, document.getElementById('cardMap'));
+                const mapRect = document.getElementById('cardMap').getBoundingClientRect();
+                const mapOffset = {
+                    x: mapRect.left - rect.left,
+                    y: mapRect.top - rect.top
+                };
+                
+                ctx.drawImage(mapCanvas, mapOffset.x, mapOffset.y, mapRect.width, mapRect.height);
             }
             
-            // 4. Draw track with margins
-            if (trackCanvas) {
-                const mapMarginTop = 60;
-                const mapMarginBottom = 120;
-                const mapMarginSide = 20;
-                
-                const mapWidth = screenWidth - mapMarginSide * 2;
-                const mapHeight = screenHeight - mapMarginTop - mapMarginBottom;
-                
-                ctx.save();
-                ctx.beginPath();
-                ctx.roundRect(mapMarginSide, mapMarginTop, mapWidth, mapHeight, 18);
-                ctx.clip();
-                ctx.drawImage(trackCanvas, mapMarginSide, mapMarginTop, mapWidth, mapHeight);
-                ctx.restore();
-                
-                // Border around map
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.roundRect(mapMarginSide, mapMarginTop, mapWidth, mapHeight, 18);
-                ctx.stroke();
-            }
-            
-            // 5. Draw logo
+            // Draw logo
             ctx.font = '600 13px "Space Grotesk", sans-serif';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.textAlign = 'left';
-            ctx.fillText('● TRAILA', 28, 42);
+            ctx.fillText('● TRAILA', 28, 40);
             
-            // 6. Draw date
-            const dateText = document.getElementById('cardDate').textContent;
-            if (dateText && dateText !== '—') {
-                ctx.font = '500 11px "Inter", sans-serif';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.textAlign = 'right';
-                ctx.fillText(dateText, screenWidth - 28, 42);
-            }
+            // Draw date
+            ctx.font = '500 11px "Inter", sans-serif';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.textAlign = 'right';
+            ctx.fillText(document.getElementById('cardDate').textContent, rect.width - 28, 40);
             
-            // 7. Draw stats at bottom
-            const statsY = screenHeight - 70;
+            // Draw stats
+            const statsY = rect.height - 60;
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(28, statsY);
-            ctx.lineTo(screenWidth - 28, statsY);
+            ctx.lineTo(rect.width - 28, statsY);
             ctx.stroke();
             
             const statsData = [
@@ -1108,7 +1087,7 @@
                 { label: 'PACE', value: document.getElementById('cardPace').textContent, unit: '/km' }
             ];
             
-            const colWidth = (screenWidth - 56) / 3;
+            const colWidth = (rect.width - 56) / 3;
             
             statsData.forEach((stat, i) => {
                 const x = 28 + i * colWidth;
@@ -1116,217 +1095,102 @@
                 ctx.font = '600 9px "Inter", sans-serif';
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
                 ctx.textAlign = 'left';
-                ctx.fillText(stat.label, x, statsY + 18);
+                ctx.fillText(stat.label, x, statsY + 20);
                 
                 ctx.font = '500 24px "Space Grotesk", sans-serif';
                 ctx.fillStyle = '#ffffff';
-                ctx.fillText(stat.value, x, statsY + 44);
+                ctx.fillText(stat.value, x, statsY + 48);
                 
                 if (stat.unit) {
                     const valueWidth = ctx.measureText(stat.value).width;
                     ctx.font = '500 11px "Inter", sans-serif';
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.fillText(stat.unit, x + valueWidth + 2, statsY + 44);
+                    ctx.fillText(stat.unit, x + valueWidth + 2, statsY + 48);
                 }
             });
             
             return canvas;
         }
         
-        // Render track to canvas using a temporary map
-        async function renderTrackToCanvas(points, width, height) {
-            // Create hidden container
-            const container = document.createElement('div');
-            container.style.position = 'fixed';
-            container.style.top = '0';
-            container.style.left = '0';
-            container.style.width = width + 'px';
-            container.style.height = height + 'px';
-            container.style.opacity = '0';
-            container.style.pointerEvents = 'none';
-            container.style.zIndex = '-1';
-            document.body.appendChild(container);
+        async function renderLeafletMapToCanvas(map, container) {
+            const rect = container.getBoundingClientRect();
+            const scale = 2;
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width * scale;
+            canvas.height = rect.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
             
-            try {
-                const tempMap = L.map(container, {
-                    zoomControl: false,
-                    attributionControl: false,
-                    dragging: false,
-                    scrollWheelZoom: false,
-                    doubleClickZoom: false,
-                    touchZoom: false,
-                    boxZoom: false,
-                    keyboard: false,
-                    tap: false,
-                    fadeAnimation: false,
-                    zoomAnimation: false
-                });
+            ctx.fillStyle = '#0a0a0b';
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            
+            const tilePane = map.getPane('tilePane');
+            if (!tilePane) return canvas;
+            
+            const tiles = tilePane.querySelectorAll('img');
+            const promises = [];
+            
+            tiles.forEach(tile => {
+                const style = tile.style;
+                const src = tile.src;
                 
-                L.tileLayer(themeConfig.tileUrl, { maxZoom: 19 }).addTo(tempMap);
+                const transform = style.transform || style.webkitTransform || '';
+                const match = transform.match(/translate3d\(([^,]+),\s*([^,]+),\s*([^)]+)\)/);
+                if (!match) return;
                 
-                const distance = calcDistance(points);
-                const simplified = distance > 3 ? simplifyTrack(points, 0.00005) : points;
+                const x = parseFloat(match[1]);
+                const y = parseFloat(match[2]);
                 
-                const tempGlow = L.polyline([], {
-                    color: themeConfig.glowColor,
-                    weight: distance > 5 ? 6 : 10,
-                    opacity: distance > 5 ? 0.4 : 0.3,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(tempMap);
-                
-                const tempLine = L.polyline([], {
-                    color: themeConfig.lineColor,
-                    weight: distance > 5 ? 3 : 4,
-                    opacity: 1,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(tempMap);
-                
-                simplified.forEach(p => {
-                    tempLine.addLatLng([p.lat, p.lng]);
-                    tempGlow.addLatLng([p.lat, p.lng]);
-                });
-                
-                // Fit bounds
-                const bounds = tempLine.getBounds();
-                if (bounds.isValid()) {
-                    tempMap.fitBounds(bounds, { padding: [40, 40] });
-                }
-                
-                // Wait for tiles to load
-                await new Promise((resolve) => {
-                    let tileCount = 0;
-                    let loaded = 0;
-                    
-                    const tilePane = tempMap.getPane('tilePane');
-                    const tiles = tilePane.querySelectorAll('img');
-                    tileCount = tiles.length;
-                    
-                    if (tileCount === 0) {
-                        tempMap.on('load', () => {
-                            setTimeout(resolve, 300);
-                        });
-                        return;
-                    }
-                    
-                    tiles.forEach(tile => {
-                        if (tile.complete) {
-                            loaded++;
-                        } else {
-                            tile.addEventListener('load', () => {
-                                loaded++;
-                                if (loaded >= tileCount) setTimeout(resolve, 300);
-                            });
-                            tile.addEventListener('error', () => {
-                                loaded++;
-                                if (loaded >= tileCount) setTimeout(resolve, 300);
-                            });
-                        }
-                    });
-                    
-                    if (loaded >= tileCount) setTimeout(resolve, 300);
-                });
-                
-                // Render to canvas
-                const canvas = document.createElement('canvas');
-                canvas.width = width * 2;
-                canvas.height = height * 2;
-                const ctx = canvas.getContext('2d');
-                ctx.scale(2, 2);
-                
-                ctx.fillStyle = '#0a0a0b';
-                ctx.fillRect(0, 0, width, height);
-                
-                const tilePane = tempMap.getPane('tilePane');
-                const tiles = tilePane.querySelectorAll('img');
-                
-                await Promise.all(Array.from(tiles).map(tile => {
-                    return new Promise((resolve) => {
-                        const style = tile.style;
-                        const transform = style.transform || style.webkitTransform || '';
-                        const match = transform.match(/translate3d\(([^,]+),\s*([^,]+),\s*([^)]+)\)/);
-                        if (!match) return resolve();
-                        
-                        const x = parseFloat(match[1]);
-                        const y = parseFloat(match[2]);
-                        
-                        const img = new Image();
-                        img.crossOrigin = 'anonymous';
-                        img.onload = () => {
-                            ctx.drawImage(img, x, y, tile.offsetWidth, tile.offsetHeight);
-                            resolve();
-                        };
-                        img.onerror = () => resolve();
-                        img.src = tile.src;
-                    });
+                promises.push(new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        ctx.drawImage(img, x, y, tile.offsetWidth, tile.offsetHeight);
+                        resolve();
+                    };
+                    img.onerror = () => resolve();
+                    img.src = src;
                 }));
-                
-                // Draw polylines
-                function drawLineOnCtx(line, color, weight, opacity) {
-                    const latlngs = line.getLatLngs();
-                    if (latlngs.length < 2) return;
-                    
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = weight;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.globalAlpha = opacity;
-                    
-                    ctx.beginPath();
-                    latlngs.forEach((ll, i) => {
-                        const point = tempMap.latLngToContainerPoint(ll);
-                        if (i === 0) ctx.moveTo(point.x, point.y);
-                        else ctx.lineTo(point.x, point.y);
-                    });
-                    ctx.stroke();
-                    ctx.globalAlpha = 1;
-                }
-                
-                drawLineOnCtx(tempGlow, themeConfig.glowColor, distance > 5 ? 6 : 10, distance > 5 ? 0.4 : 0.3);
-                drawLineOnCtx(tempLine, themeConfig.lineColor, distance > 5 ? 3 : 4, 1);
-                
-                // Start marker
-                if (simplified.length > 0) {
-                    const startPt = tempMap.latLngToContainerPoint(simplified[0]);
-                    ctx.fillStyle = themeConfig.markerColor;
-                    ctx.strokeStyle = '#fff';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(startPt.x, startPt.y, 6, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                    ctx.shadowColor = themeConfig.markerColor;
-                    ctx.shadowBlur = 8;
-                    ctx.beginPath();
-                    ctx.arc(startPt.x, startPt.y, 6, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-                    
-                    // End marker
-                    if (simplified.length > 1 && distance < 5) {
-                        const lastPt = tempMap.latLngToContainerPoint(simplified[simplified.length - 1]);
-                        ctx.fillStyle = themeConfig.markerColor;
-                        ctx.strokeStyle = '#fff';
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.arc(lastPt.x, lastPt.y, 6, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.stroke();
-                        ctx.shadowColor = themeConfig.markerColor;
-                        ctx.shadowBlur = 8;
-                        ctx.beginPath();
-                        ctx.arc(lastPt.x, lastPt.y, 6, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.shadowBlur = 0;
-                    }
-                }
-                
-                tempMap.remove();
-                return canvas;
-            } finally {
-                document.body.removeChild(container);
+            });
+            
+            await Promise.all(promises);
+            
+            if (cardGlow && route.length > 0) {
+                drawPolylineOnCanvas(ctx, map, cardGlow, {
+                    color: themeConfig.glowColor,
+                    weight: calcDistance(route) > 5 ? 6 : 10,
+                    opacity: calcDistance(route) > 5 ? 0.4 : 0.3
+                });
             }
+            if (cardPolyline && route.length > 0) {
+                drawPolylineOnCanvas(ctx, map, cardPolyline, {
+                    color: themeConfig.lineColor,
+                    weight: calcDistance(route) > 5 ? 3 : 4,
+                    opacity: 1
+                });
+            }
+            
+            return canvas;
+        }
+        
+        function drawPolylineOnCanvas(ctx, map, layer, style) {
+            const latlngs = layer.getLatLngs();
+            if (latlngs.length < 2) return;
+            
+            ctx.strokeStyle = style.color;
+            ctx.lineWidth = style.weight;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = style.opacity;
+            
+            ctx.beginPath();
+            latlngs.forEach((ll, i) => {
+                const point = map.latLngToContainerPoint(ll);
+                if (i === 0) ctx.moveTo(point.x, point.y);
+                else ctx.lineTo(point.x, point.y);
+            });
+            ctx.stroke();
+            ctx.globalAlpha = 1;
         }
         
         async function saveCard() {
@@ -1334,7 +1198,7 @@
             loading.classList.add('active');
             
             try {
-                const canvas = await captureFullScreen();
+                const canvas = await captureCardAsImage();
                 
                 canvas.toBlob((blob) => {
                     const url = URL.createObjectURL(blob);
@@ -1343,7 +1207,7 @@
                     a.download = `traila-${Date.now()}.png`;
                     a.click();
                     URL.revokeObjectURL(url);
-                    showToast('Saved');
+                    showToast('Saved to downloads');
                 }, 'image/png');
             } catch (e) {
                 showToast('Export failed');
@@ -1358,7 +1222,7 @@
             loading.classList.add('active');
             
             try {
-                const canvas = await captureFullScreen();
+                const canvas = await captureCardAsImage();
                 
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
@@ -1370,6 +1234,7 @@
                                 title: 'Traila Activity',
                                 text: 'Check out my route!'
                             });
+                            showToast('Shared');
                         } catch (e) {
                             if (e.name !== 'AbortError') {
                                 fallbackShare(canvas);
