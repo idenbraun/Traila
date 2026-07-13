@@ -3,103 +3,275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Traila MVP</title>
+    <title>Traila</title>
     
-    <!-- Leaflet CSS (карты) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             overflow: hidden;
+            background: #0a0a0a;
+            color: #fff;
+            letter-spacing: -0.02em;
         }
         
         #map {
-            height: 70vh;
+            height: 100vh;
             width: 100%;
+            filter: saturate(0.8) contrast(1.1);
         }
         
-        .stats {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px;
-            border-radius: 12px;
+        /* Верхняя панель со статистикой */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 60px 20px 20px;
+            background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0) 100%);
             z-index: 1000;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 16px;
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         
-        .stat-item {
-            margin-bottom: 5px;
-            font-size: 16px;
+        .stat-label {
+            font-size: 10px;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 6px;
         }
         
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .stat-unit {
+            font-size: 14px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.4);
+            margin-left: 2px;
+        }
+        
+        /* Нижняя панель управления */
         .controls {
             position: fixed;
-            bottom: 20px;
-            left: 10px;
-            right: 10px;
-            display: flex;
-            gap: 10px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            padding-bottom: 40px;
+            background: linear-gradient(0deg, rgba(10, 10, 10, 0.98) 0%, rgba(10, 10, 10, 0.9) 50%, rgba(10, 10, 10, 0) 100%);
             z-index: 1000;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
         
-        button {
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .btn {
             flex: 1;
             padding: 18px;
             border: none;
-            border-radius: 12px;
-            font-size: 18px;
-            font-weight: 700;
+            border-radius: 16px;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Inter', sans-serif;
+            letter-spacing: -0.01em;
+            position: relative;
+            overflow: hidden;
         }
         
-        .start {
-            background: #00FF88;
-            color: black;
+        .btn:active {
+            transform: scale(0.98);
         }
         
-        .stop {
-            background: #FF3366;
-            color: white;
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
         }
         
-        .clear {
-            background: white;
-            color: black;
+        .btn-primary:active {
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
         
-        button:active {
-            opacity: 0.8;
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: #fff;
+            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .btn-secondary:active {
+            background: rgba(255, 255, 255, 0.12);
+        }
+        
+        .btn-icon {
+            margin-right: 8px;
+            font-size: 18px;
+        }
+        
+        /* Индикатор записи */
+        .recording-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 1001;
+        }
+        
+        .recording-indicator.active {
+            display: flex;
+        }
+        
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        
+        .rec-text {
+            font-size: 12px;
+            font-weight: 600;
+            color: #ef4444;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        /* Скрываем стандартные контролы Leaflet */
+        .leaflet-control-attribution {
+            display: none;
+        }
+        
+        .leaflet-control-zoom {
+            border: none !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        }
+        
+        .leaflet-control-zoom a {
+            background: rgba(255, 255, 255, 0.1) !important;
+            color: #fff !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+        }
+        
+        .leaflet-control-zoom a:hover {
+            background: rgba(255, 255, 255, 0.15) !important;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
-    <div class="stats">
-        <div class="stat-item">📍 Точек: <span id="points">0</span></div>
-        <div class="stat-item">📏 Дистанция: <span id="distance">0.00</span> км</div>
-        <div class="stat-item">⏱️ Время: <span id="time">00:00</span></div>
+    <!-- Индикатор записи -->
+    <div class="recording-indicator" id="recIndicator">
+        <div class="rec-dot"></div>
+        <div class="rec-text">Recording</div>
     </div>
     
+    <!-- Верхняя панель -->
+    <div class="header">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Distance</div>
+                <div class="stat-value">
+                    <span id="distance">0.00</span>
+                    <span class="stat-unit">km</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Time</div>
+                <div class="stat-value">
+                    <span id="time">00:00</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Pace</div>
+                <div class="stat-value">
+                    <span id="pace">0:00</span>
+                    <span class="stat-unit">/km</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Нижняя панель -->
     <div class="controls">
-        <button class="start" id="startBtn" onclick="startTracking()">▶ СТАРТ</button>
-        <button class="stop" id="stopBtn" onclick="stopTracking()" style="display:none"> СТОП</button>
-        <button class="clear" onclick="clearRoute()"> ОЧИСТИТЬ</button>
+        <div class="button-group">
+            <button class="btn btn-primary" id="startBtn" onclick="startTracking()">
+                <span class="btn-icon">▶</span>Start
+            </button>
+            <button class="btn btn-danger" id="stopBtn" onclick="stopTracking()" style="display:none">
+                <span class="btn-icon">■</span>Stop
+            </button>
+        </div>
+        <button class="btn btn-secondary" onclick="clearRoute()">
+            <span class="btn-icon">↺</span>Reset
+        </button>
     </div>
 
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
@@ -108,24 +280,40 @@
         let startTime;
         let isTracking = false;
         
-        // Инициализация карты
         function initMap() {
-            map = L.map('map').setView([55.7558, 37.6173], 15);
+            // CartoDB Dark Matter — стильная темная карта
+            map = L.map('map', {
+                zoomControl: true,
+                attributionControl: false
+            }).setView([55.7558, 37.6173], 15);
             
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
             }).addTo(map);
             
+            // Градиентная линия трека
             polyline = L.polyline([], {
-                color: '#00FF88',
-                weight: 4,
+                color: '#6366f1',
+                weight: 5,
                 opacity: 0.9,
+                lineCap: 'round',
+                lineJoin: 'round',
+                dashArray: null,
+                className: 'track-line'
+            }).addTo(map);
+            
+            // Добавляем свечение линии
+            const glowLine = L.polyline([], {
+                color: '#6366f1',
+                weight: 12,
+                opacity: 0.3,
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(map);
+            
+            window.glowLine = glowLine;
         }
         
-        // Старт трекинга
         function startTracking() {
             if (!navigator.geolocation) {
                 alert('Геолокация не поддерживается');
@@ -138,24 +326,23 @@
             
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'block';
+            document.getElementById('recIndicator').classList.add('active');
             
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    route.push({ lat, lng });
+                    route.push({ lat, lng, time: new Date() });
                     polyline.addLatLng([lat, lng]);
+                    window.glowLine.addLatLng([lat, lng]);
                     
-                    // Центрируем карту на последней точке
-                    map.setView([lat, lng]);
-                    
-                    // Обновляем статистику
+                    map.setView([lat, lng], 16, { animate: true });
                     updateStats();
                 },
                 (error) => {
-                    console.error('Ошибка GPS:', error);
-                    alert('Ошибка получения координат: ' + error.message);
+                    console.error('GPS Error:', error);
+                    alert('Ошибка GPS: ' + error.message);
                 },
                 {
                     enableHighAccuracy: true,
@@ -165,7 +352,6 @@
             );
         }
         
-        // Стоп трекинга
         function stopTracking() {
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
@@ -175,35 +361,42 @@
             
             document.getElementById('startBtn').style.display = 'block';
             document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('recIndicator').classList.remove('active');
         }
         
-        // Очистка маршрута
         function clearRoute() {
             stopTracking();
             route = [];
             polyline.setLatLngs([]);
+            window.glowLine.setLatLngs([]);
             updateStats();
         }
         
-        // Обновление статистики
         function updateStats() {
-            document.getElementById('points').textContent = route.length;
-            document.getElementById('distance').textContent = calculateDistance().toFixed(2);
+            const distance = calculateDistance();
+            document.getElementById('distance').textContent = distance.toFixed(2);
             
             if (startTime) {
                 const elapsed = Math.floor((new Date() - startTime) / 1000);
                 const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
                 const seconds = (elapsed % 60).toString().padStart(2, '0');
                 document.getElementById('time').textContent = `${minutes}:${seconds}`;
+                
+                // Расчет темпа
+                if (distance > 0.01) {
+                    const paceSeconds = elapsed / distance;
+                    const paceMin = Math.floor(paceSeconds / 60);
+                    const paceSec = Math.floor(paceSeconds % 60).toString().padStart(2, '0');
+                    document.getElementById('pace').textContent = `${paceMin}:${paceSec}`;
+                }
             }
         }
         
-        // Расчет дистанции (Haversine)
         function calculateDistance() {
             if (route.length < 2) return 0;
             
             let total = 0;
-            const R = 6371; // радиус Земли в км
+            const R = 6371;
             
             for (let i = 1; i < route.length; i++) {
                 const lat1 = route[i-1].lat * Math.PI / 180;
@@ -222,7 +415,6 @@
             return total;
         }
         
-        // Запуск при загрузке
         window.onload = initMap;
     </script>
 </body>
