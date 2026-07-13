@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
     
     <style>
         :root {
@@ -81,11 +81,12 @@
             z-index: 5;
         }
         
-        /* ============ TRACKING SCREEN - REDESIGNED ============ */
+        /* ============ TRACKING SCREEN ============ */
         #trackingScreen {
-            justify-content: flex-end;
+            justify-content: space-between;
         }
         
+        /* Top bar - logo and REC */
         .top-bar {
             padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px 0;
             display: flex;
@@ -100,28 +101,13 @@
             pointer-events: auto;
         }
         
-        .logo {
+        .logo-text {
             font-family: 'Space Grotesk', sans-serif;
             font-weight: 700;
-            font-size: 18px;
-            letter-spacing: -0.03em;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 14px;
-            background: rgba(10, 10, 11, 0.5);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 100px;
-        }
-        
-        .logo-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent);
-            box-shadow: 0 0 12px var(--accent);
+            font-size: 22px;
+            letter-spacing: -0.04em;
+            color: var(--text);
+            text-shadow: 0 2px 12px rgba(0,0,0,0.5);
         }
         
         .rec-badge {
@@ -165,7 +151,7 @@
             letter-spacing: 0.12em;
         }
         
-        /* Bottom panel - semi-transparent */
+        /* Bottom panel */
         .bottom-panel {
             position: relative;
             z-index: 20;
@@ -178,15 +164,15 @@
         .bottom-panel::before {
             content: '';
             position: absolute;
-            inset: 0;
-            background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 11, 0.6) 30%, rgba(10, 10, 11, 0.8) 100%);
+            inset: -40px -16px 0 -16px;
+            background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 11, 0.6) 30%, rgba(10, 10, 11, 0.85) 100%);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             pointer-events: none;
             z-index: -1;
         }
         
-        /* Stats - semi-transparent */
+        /* Stats */
         .stats-bento {
             display: flex;
             gap: 8px;
@@ -251,7 +237,13 @@
             font-size: 16px;
         }
         
-        /* Buttons */
+        /* Button row */
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+        
         .btn {
             position: relative;
             display: flex;
@@ -274,16 +266,38 @@
             transform: scale(0.98);
         }
         
-        .btn-start {
+        .btn-primary {
+            flex: 1;
             background: var(--accent);
             color: #0a0a0b;
             box-shadow: 0 10px 40px -10px var(--accent), inset 0 1px 0 rgba(255,255,255,0.3);
         }
         
-        .btn-stop {
+        .btn-danger {
+            flex: 1;
             background: var(--danger);
             color: #fff;
             box-shadow: 0 10px 40px -10px var(--danger);
+        }
+        
+        .btn-icon-only {
+            width: 62px;
+            flex: none;
+            padding: 0;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text);
+        }
+        
+        .btn-icon-only:active {
+            background: rgba(255, 255, 255, 0.14);
+        }
+        
+        .btn-icon-only svg {
+            width: 22px;
+            height: 22px;
         }
         
         .btn-icon {
@@ -567,10 +581,7 @@
         <div id="map"></div>
         
         <div class="top-bar">
-            <div class="logo">
-                <div class="logo-dot"></div>
-                <span>TRAILA</span>
-            </div>
+            <div class="logo-text">TRAILA</div>
             <div class="rec-badge" id="recBadge">
                 <div class="rec-dot"></div>
                 <span class="rec-text">REC</span>
@@ -597,18 +608,36 @@
                 </div>
             </div>
             
-            <button class="btn btn-start" id="startBtn" onclick="startTracking()">
-                <span class="btn-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                </span>
-                <span>Start Activity</span>
-            </button>
-            <button class="btn btn-stop" id="stopBtn" onclick="finishTracking()" style="display:none">
-                <span class="btn-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                </span>
-                <span>Finish</span>
-            </button>
+            <!-- Before start: Start + Locate -->
+            <div class="btn-row" id="btnRowIdle">
+                <button class="btn btn-primary" onclick="startTracking()">
+                    <span class="btn-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </span>
+                    <span>Start</span>
+                </button>
+                <button class="btn btn-icon-only" onclick="recenterMap()" title="Center on location">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- During activity: Pause + Stop -->
+            <div class="btn-row" id="btnRowActive" style="display:none">
+                <button class="btn btn-primary" id="pauseBtn" onclick="togglePause()">
+                    <span class="btn-icon" id="pauseIcon">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+                    </span>
+                    <span id="pauseLabel">Pause</span>
+                </button>
+                <button class="btn btn-icon-only" style="background: rgba(255, 71, 87, 0.2); border-color: rgba(255, 71, 87, 0.3);" onclick="finishTracking()" title="Finish">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--danger);">
+                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
     
@@ -686,9 +715,11 @@
         let cardPolyline, cardGlow;
         let watchId;
         let route = [];
-        let startTime, endTime;
+        let startTime, endTime, pausedDuration = 0, pauseStart = null;
         let isTracking = false;
+        let isPaused = false;
         let timerInterval;
+        let lastKnownPosition = null;
         
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -720,6 +751,37 @@
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(mainMap);
+            
+            // Try to get initial location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 16);
+                    },
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            }
+        }
+        
+        function recenterMap() {
+            if (lastKnownPosition) {
+                mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true });
+                showToast('Centered on location');
+            } else {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                            mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 16);
+                            showToast('Centered on location');
+                        },
+                        () => showToast('Location unavailable'),
+                        { enableHighAccuracy: true, timeout: 5000 }
+                    );
+                }
+            }
         }
         
         function startTracking() {
@@ -729,28 +791,55 @@
             }
             
             isTracking = true;
+            isPaused = false;
             route = [];
             startTime = Date.now();
+            pausedDuration = 0;
+            pauseStart = null;
             
-            document.getElementById('startBtn').style.display = 'none';
-            document.getElementById('stopBtn').style.display = 'flex';
+            document.getElementById('btnRowIdle').style.display = 'none';
+            document.getElementById('btnRowActive').style.display = 'flex';
             document.getElementById('recBadge').classList.add('active');
             
-            // Запускаем таймер
             timerInterval = setInterval(updateLiveStats, 1000);
             
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
-                    route.push(p);
-                    polyline.addLatLng([p.lat, p.lng]);
-                    glowLine.addLatLng([p.lat, p.lng]);
-                    mainMap.panTo([p.lat, p.lng], { animate: true, duration: 0.5 });
+                    lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    
+                    if (!isPaused) {
+                        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
+                        route.push(p);
+                        polyline.addLatLng([p.lat, p.lng]);
+                        glowLine.addLatLng([p.lat, p.lng]);
+                    }
+                    mainMap.panTo([pos.coords.latitude, pos.coords.longitude], { animate: true, duration: 0.5 });
                     updateLiveStats();
                 },
                 (err) => showToast('GPS error: ' + err.message),
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
             );
+        }
+        
+        function togglePause() {
+            isPaused = !isPaused;
+            const icon = document.getElementById('pauseIcon');
+            const label = document.getElementById('pauseLabel');
+            
+            if (isPaused) {
+                pauseStart = Date.now();
+                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+                label.textContent = 'Resume';
+                document.getElementById('recBadge').classList.remove('active');
+            } else {
+                if (pauseStart) {
+                    pausedDuration += Date.now() - pauseStart;
+                    pauseStart = null;
+                }
+                icon.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+                label.textContent = 'Pause';
+                document.getElementById('recBadge').classList.add('active');
+            }
         }
         
         function finishTracking() {
@@ -763,10 +852,11 @@
                 timerInterval = null;
             }
             isTracking = false;
+            isPaused = false;
             endTime = Date.now();
             
-            document.getElementById('startBtn').style.display = 'flex';
-            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('btnRowIdle').style.display = 'flex';
+            document.getElementById('btnRowActive').style.display = 'none';
             document.getElementById('recBadge').classList.remove('active');
             
             showFinishScreen();
@@ -790,11 +880,17 @@
             document.getElementById('distance').textContent = d.toFixed(2);
             
             if (startTime) {
-                const s = Math.floor((Date.now() - startTime) / 1000);
-                document.getElementById('time').textContent = fmtTime(s);
+                let elapsed = Math.floor((Date.now() - startTime) / 1000);
+                if (isPaused && pauseStart) {
+                    elapsed -= Math.floor((Date.now() - pauseStart) / 1000);
+                }
+                elapsed -= Math.floor(pausedDuration / 1000);
+                if (elapsed < 0) elapsed = 0;
+                
+                document.getElementById('time').textContent = fmtTime(elapsed);
                 
                 if (d > 0.02) {
-                    const pace = s / d;
+                    const pace = elapsed / d;
                     document.getElementById('pace').textContent = fmtPace(pace);
                 }
             }
@@ -805,7 +901,9 @@
             document.getElementById('finishScreen').classList.remove('hidden');
             
             const d = calcDistance(route);
-            const elapsed = Math.floor(((endTime || Date.now()) - startTime) / 1000);
+            let elapsed = Math.floor(((endTime || Date.now()) - startTime) / 1000);
+            elapsed -= Math.floor(pausedDuration / 1000);
+            if (elapsed < 0) elapsed = 0;
             
             document.getElementById('cardDistance').textContent = d.toFixed(2);
             document.getElementById('cardTime').textContent = fmtTime(elapsed);
@@ -821,7 +919,6 @@
         function initCardMap() {
             if (cardMap) cardMap.remove();
             
-            // Включаем zoom и drag для интерактивности
             cardMap = L.map('cardMap', {
                 zoomControl: false,
                 attributionControl: false,
@@ -935,12 +1032,12 @@
             return [20, 20];
         }
         
-        async function saveCard() {
+        // ============ RENDER CARD TO IMAGE ============
+        async function renderCardToCanvas() {
             const card = document.getElementById('card');
-            const loading = document.getElementById('cardLoading');
-            loading.classList.add('active');
+            const cardMapEl = document.getElementById('cardMap');
             
-            // Отключаем интерактивность перед рендером
+            // Disable map interaction during render
             if (cardMap) {
                 cardMap.dragging.disable();
                 cardMap.scrollWheelZoom.disable();
@@ -948,15 +1045,178 @@
                 cardMap.touchZoom.disable();
             }
             
+            // Force map to redraw and wait for tiles
+            if (cardMap) {
+                cardMap.invalidateSize();
+                cardMap.eachLayer(l => { if (l.redraw) l.redraw(); });
+            }
+            
+            // Wait for tiles to load
             await new Promise(r => setTimeout(r, 1500));
             
-            try {
-                const canvas = await html2canvas(card, {
-                    backgroundColor: null,
-                    scale: 2,
-                    useCORS: true,
-                    logging: false
+            // Strategy: render map to canvas separately, then composite with UI
+            let mapCanvas = null;
+            if (cardMap) {
+                mapCanvas = await renderLeafletMapToCanvas(cardMap, cardMapEl);
+            }
+            
+            // Now render the whole card with html-to-image, replacing map area with our canvas
+            if (mapCanvas) {
+                // Temporarily replace map div content with canvas
+                const originalContent = cardMapEl.innerHTML;
+                cardMapEl.innerHTML = '';
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = mapCanvas.width;
+                tempCanvas.height = mapCanvas.height;
+                tempCanvas.style.width = '100%';
+                tempCanvas.style.height = '100%';
+                tempCanvas.style.display = 'block';
+                tempCanvas.getContext('2d').drawImage(mapCanvas, 0, 0);
+                cardMapEl.appendChild(tempCanvas);
+                
+                try {
+                    const result = await htmlToImage.toPng(card, {
+                        quality: 1,
+                        pixelRatio: 2,
+                        cacheBust: true,
+                        skipAutoScale: true,
+                    });
+                    
+                    // Restore
+                    cardMapEl.innerHTML = originalContent;
+                    setTimeout(() => cardMap.invalidateSize(), 50);
+                    
+                    // Load result into image then canvas
+                    const img = new Image();
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = result;
+                    });
+                    
+                    const finalCanvas = document.createElement('canvas');
+                    finalCanvas.width = img.width;
+                    finalCanvas.height = img.height;
+                    finalCanvas.getContext('2d').drawImage(img, 0, 0);
+                    return finalCanvas;
+                } catch (e) {
+                    cardMapEl.innerHTML = originalContent;
+                    setTimeout(() => cardMap.invalidateSize(), 50);
+                    throw e;
+                }
+            } else {
+                // Fallback: just use html-to-image
+                const result = await htmlToImage.toPng(card, {
+                    quality: 1,
+                    pixelRatio: 2,
+                    cacheBust: true,
                 });
+                const img = new Image();
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = result;
+                });
+                const finalCanvas = document.createElement('canvas');
+                finalCanvas.width = img.width;
+                finalCanvas.height = img.height;
+                finalCanvas.getContext('2d').drawImage(img, 0, 0);
+                return finalCanvas;
+            }
+        }
+        
+        // Render Leaflet map to canvas by drawing tiles manually
+        async function renderLeafletMapToCanvas(map, container) {
+            const rect = container.getBoundingClientRect();
+            const scale = 2;
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width * scale;
+            canvas.height = rect.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
+            
+            // Fill background
+            ctx.fillStyle = '#0a0a0b';
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            
+            // Get all tile elements
+            const tilePane = map.getPane('tilePane');
+            if (!tilePane) return canvas;
+            
+            const tiles = tilePane.querySelectorAll('img');
+            const promises = [];
+            
+            tiles.forEach(tile => {
+                const style = tile.style;
+                const src = tile.src;
+                
+                // Parse transform
+                const transform = style.transform || style.webkitTransform || '';
+                const match = transform.match(/translate3d\(([^,]+),\s*([^,]+),\s*([^)]+)\)/);
+                if (!match) return;
+                
+                const x = parseFloat(match[1]);
+                const y = parseFloat(match[2]);
+                
+                promises.push(new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        ctx.drawImage(img, x, y, tile.offsetWidth, tile.offsetHeight);
+                        resolve();
+                    };
+                    img.onerror = () => resolve();
+                    img.src = src;
+                }));
+            });
+            
+            await Promise.all(promises);
+            
+            // Now draw the polylines on top
+            if (cardGlow && route.length > 0) {
+                drawPolylineOnCanvas(ctx, map, cardGlow, {
+                    color: themeConfig.glowColor,
+                    weight: calcDistance(route) > 5 ? 6 : 10,
+                    opacity: calcDistance(route) > 5 ? 0.4 : 0.3
+                });
+            }
+            if (cardPolyline && route.length > 0) {
+                drawPolylineOnCanvas(ctx, map, cardPolyline, {
+                    color: themeConfig.lineColor,
+                    weight: calcDistance(route) > 5 ? 3 : 4,
+                    opacity: 1
+                });
+            }
+            
+            return canvas;
+        }
+        
+        function drawPolylineOnCanvas(ctx, map, layer, style) {
+            const latlngs = layer.getLatLngs();
+            if (latlngs.length < 2) return;
+            
+            ctx.strokeStyle = style.color;
+            ctx.lineWidth = style.weight;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = style.opacity;
+            
+            ctx.beginPath();
+            latlngs.forEach((ll, i) => {
+                const point = map.latLngToContainerPoint(ll);
+                if (i === 0) ctx.moveTo(point.x, point.y);
+                else ctx.lineTo(point.x, point.y);
+            });
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+        
+        async function saveCard() {
+            const loading = document.getElementById('cardLoading');
+            loading.classList.add('active');
+            
+            try {
+                const canvas = await renderCardToCanvas();
                 
                 canvas.toBlob((blob) => {
                     const url = URL.createObjectURL(blob);
@@ -972,7 +1232,6 @@
                 console.error(e);
             } finally {
                 loading.classList.remove('active');
-                // Включаем обратно
                 if (cardMap) {
                     cardMap.dragging.enable();
                     cardMap.scrollWheelZoom.enable();
@@ -983,27 +1242,11 @@
         }
         
         async function shareCard() {
-            const card = document.getElementById('card');
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
             
-            // Отключаем интерактивность перед рендером
-            if (cardMap) {
-                cardMap.dragging.disable();
-                cardMap.scrollWheelZoom.disable();
-                cardMap.doubleClickZoom.disable();
-                cardMap.touchZoom.disable();
-            }
-            
-            await new Promise(r => setTimeout(r, 1500));
-            
             try {
-                const canvas = await html2canvas(card, {
-                    backgroundColor: null,
-                    scale: 2,
-                    useCORS: true,
-                    logging: false
-                });
+                const canvas = await renderCardToCanvas();
                 
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
@@ -1018,14 +1261,13 @@
                             showToast('Shared');
                         } catch (e) {
                             if (e.name !== 'AbortError') {
-                                fallbackShare();
+                                fallbackShare(canvas);
                             }
                         }
                     } else {
-                        fallbackShare();
+                        fallbackShare(canvas);
                     }
                     loading.classList.remove('active');
-                    // Включаем обратно
                     if (cardMap) {
                         cardMap.dragging.enable();
                         cardMap.scrollWheelZoom.enable();
@@ -1036,27 +1278,17 @@
             } catch (e) {
                 showToast('Share failed');
                 loading.classList.remove('active');
-                // Включаем обратно
-                if (cardMap) {
-                    cardMap.dragging.enable();
-                    cardMap.scrollWheelZoom.enable();
-                    cardMap.doubleClickZoom.enable();
-                    cardMap.touchZoom.enable();
-                }
             }
         }
         
-        function fallbackShare() {
-            const card = document.getElementById('card');
-            html2canvas(card, { backgroundColor: null, scale: 2, useCORS: true }).then(canvas => {
-                canvas.toBlob(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `traila-${Date.now()}.png`;
-                    a.click();
-                    showToast('Image saved — share manually');
-                });
+        function fallbackShare(canvas) {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `traila-${Date.now()}.png`;
+                a.click();
+                showToast('Image saved — share manually');
             });
         }
         
