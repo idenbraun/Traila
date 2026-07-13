@@ -7,7 +7,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Traila</title>
     
+    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- html2canvas для надежных скриншотов без белого фона -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -55,6 +62,11 @@
         
         #map, #map * {
             pointer-events: auto !important;
+        }
+        
+        /* Темная тема для карты, работающая в России (фильтр только на тайлы, не на маркеры) */
+        .leaflet-tile-pane {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
         
         .leaflet-control-attribution { display: none !important; }
@@ -737,8 +749,6 @@
         <span id="toastText">Saved</span>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     <script>
         // ============================================================
         // KALMAN FILTER
@@ -853,7 +863,7 @@
         }
         
         // ============================================================
-        // MAP MATCHING
+        // MAP MATCHING (ИСПОЛЬЗУЕМ СТАБИЛЬНЫЙ СЕРВЕР ДЛЯ РФ/ЕВРОПЫ)
         // ============================================================
         async function snapToRoad(points, profile = 'foot') {
             if (points.length < 2) return points;
@@ -866,7 +876,8 @@
             const coords = simplified.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
             const radiuses = simplified.map(() => 30).join(';');
             
-            const url = `https://router.project-osrm.org/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
+            // Заменили project-osrm на routing.openstreetmap.de (гораздо стабильнее для РФ)
+            const url = `https://routing.openstreetmap.de/routed-foot/match/v1/foot/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
             
             try {
                 const res = await fetch(url);
@@ -963,8 +974,9 @@
         let activityProfile = 'foot';
         let currentHeading = 0;
         
+        // ИСПОЛЬЗУЕМ НАДЕЖНЫЕ РОССИЙСКИЕ ТАЙЛЫ (OpenStreetMap.ru)
         const themeConfig = {
-            tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            tileUrl: 'https://tile.openstreetmap.ru/{z}/{x}/{y}.png',
             lineColor: '#c4f04d',
             glowColor: '#c4f04d',
             markerColor: '#c4f04d'
@@ -993,12 +1005,11 @@
         }
         
         // ============================================================
-        // CURRENT LOCATION MARKER (с направлением)
+        // CURRENT LOCATION MARKER
         // ============================================================
         function createLocationMarkerHTML(heading = 0) {
             return `
                 <div style="position: relative; width: 32px; height: 32px;">
-                    <!-- Пульсирующий круг -->
                     <div style="
                         position: absolute;
                         top: 50%;
@@ -1011,7 +1022,6 @@
                         opacity: 0.2;
                         animation: markerPulse 2s ease-out infinite;
                     "></div>
-                    <!-- Стрелка направления -->
                     <div style="
                         position: absolute;
                         top: 50%;
@@ -1025,7 +1035,6 @@
                         filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
                         transition: transform 0.3s ease;
                     "></div>
-                    <!-- Центральная точка -->
                     <div style="
                         position: absolute;
                         top: 50%;
@@ -1062,7 +1071,6 @@
                 locationMarker = L.marker([lat, lng], { icon: markerIcon, zIndexOffset: 1000 }).addTo(mainMap);
             } else {
                 locationMarker.setLatLng([lat, lng]);
-                // Обновляем HTML маркера с новым направлением
                 locationMarker.setIcon(L.divIcon({
                     className: '',
                     html: createLocationMarkerHTML(heading),
@@ -1088,7 +1096,11 @@
                 attributionControl: false
             }).setView([55.7558, 37.6173], 15);
             
-            L.tileLayer(themeConfig.tileUrl, { maxZoom: 19 }).addTo(mainMap);
+            // Добавлен crossOrigin: 'anonymous' для предотвращения tainted canvas при скриншоте
+            L.tileLayer(themeConfig.tileUrl, { 
+                maxZoom: 19,
+                crossOrigin: 'anonymous'
+            }).addTo(mainMap);
             
             glowLine = L.polyline([], {
                 color: themeConfig.glowColor,
@@ -1116,14 +1128,11 @@
                 updateLiveStats();
             }
             
-            // СРАЗУ запрашиваем геолокацию и центрируем карту
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 16);
-                        
-                        // Создаём маркер текущей позиции
                         updateCurrentLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng, 0);
                     },
                     () => {
@@ -1140,8 +1149,6 @@
                     (pos) => {
                         lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17, { animate: true });
-                        
-                        // Обновляем маркер
                         updateCurrentLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng, currentHeading);
                     },
                     () => {
@@ -1233,18 +1240,15 @@
             lastKnownPosition = { lat: latitude, lng: longitude };
             updateGPSIndicator(accuracy);
             
-            // Вычисляем направление если не доступно из GPS
             let direction = heading;
             if (direction === null || direction === undefined || isNaN(direction)) {
-                // Вычисляем по последним двум точкам
                 if (route.length >= 2) {
                     direction = calculateBearing(route[route.length - 2], route[route.length - 1]);
                 } else {
-                    direction = currentHeading; // сохраняем последнее известное
+                    direction = currentHeading;
                 }
             }
             
-            // ВСЕГДА обновляем маркер текущей позиции с направлением
             updateCurrentLocationMarker(latitude, longitude, direction);
             
             if (isPaused) {
@@ -1252,7 +1256,8 @@
                 return;
             }
             
-            if (accuracy > 30) return;
+            // УЖЕСТЧЕННЫЙ ПОРОГ ТОЧНОСТИ ДЛЯ МАКСИМАЛЬНОГО КАЧЕСТВА
+            if (accuracy > 20) return;
             
             const filtered = {
                 lat: kalmanLat.filter(latitude, longitude).lat,
@@ -1263,8 +1268,18 @@
             
             if (lastAcceptedPoint) {
                 const dist = haversineDistance(lastAcceptedPoint, filtered);
-                if (dist > 100) return;
-                if (dist < 2) return;
+                const timeDiff = (filtered.t - lastAcceptedPoint.t) / 1000;
+                
+                // ФИЛЬТР GPS-СКАЧКОВ: если скорость > 15 м/с (~54 км/ч), это артефакт GPS
+                if (timeDiff > 0) {
+                    const speed = dist / timeDiff;
+                    if (speed > 15) {
+                        console.warn('GPS jump detected, ignoring point');
+                        return;
+                    }
+                }
+                
+                if (dist < 2) return; // Игнорируем микро-движения
             }
             
             lastAcceptedPoint = filtered;
@@ -1328,13 +1343,11 @@
             
             if (route.length >= 2) {
                 document.getElementById('matchingBadge').classList.add('active');
-                
                 try {
                     matchedRoute = await snapToRoad(route, activityProfile);
                 } catch (e) {
                     matchedRoute = route;
                 }
-                
                 document.getElementById('matchingBadge').classList.remove('active');
             } else {
                 matchedRoute = route;
@@ -1405,9 +1418,10 @@
             
             const now = new Date(endTime || Date.now());
             const opts = { day: 'numeric', month: 'short', year: 'numeric' };
-            document.getElementById('cardDate').textContent = now.toLocaleDateString('en-US', opts).toUpperCase();
+            document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', opts).toUpperCase();
             
-            setTimeout(() => initCardMap(), 200);
+            // Даем DOM время на отрисовку перед инициализацией карты
+            setTimeout(() => initCardMap(), 300);
         }
         
         function initCardMap() {
@@ -1425,7 +1439,10 @@
                 tap: false
             });
             
-            L.tileLayer(themeConfig.tileUrl, { maxZoom: 19 }).addTo(cardMap);
+            L.tileLayer(themeConfig.tileUrl, { 
+                maxZoom: 19,
+                crossOrigin: 'anonymous' // КРИТИЧНО ДЛЯ СКРИНШОТА
+            }).addTo(cardMap);
             
             const displayRoute = matchedRoute || route;
             
@@ -1459,256 +1476,40 @@
                     cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
                 }
                 
-                // Ждём загрузки тайлов
-                waitForTiles(cardMap).then(() => {
-                    setTimeout(() => cardMap.invalidateSize(), 100);
-                });
+                // КРИТИЧНО: сообщаем Leaflet пересчитать размеры после того, как экран стал видимым
+                setTimeout(() => {
+                    cardMap.invalidateSize();
+                }, 100);
             }
         }
         
-        function waitForTiles(map, timeout = 5000) {
-            return new Promise((resolve) => {
-                let loaded = 0;
-                let resolved = false;
-                
-                const finish = () => {
-                    if (resolved) return;
-                    resolved = true;
-                    resolve();
-                };
-                
-                const timer = setTimeout(finish, timeout);
-                
-                map.on('tileload', () => {
-                    loaded++;
-                    if (loaded >= 9) {
-                        clearTimeout(timer);
-                        setTimeout(finish, 500);
-                    }
-                });
-                
-                map.on('load', () => {
-                    clearTimeout(timer);
-                    setTimeout(finish, 500);
-                });
-                
-                const tilePane = map.getPane('tilePane');
-                if (tilePane) {
-                    const existingTiles = tilePane.querySelectorAll('.leaflet-tile-loaded');
-                    if (existingTiles.length >= 9) {
-                        clearTimeout(timer);
-                        setTimeout(finish, 500);
-                    }
-                }
-            });
-        }
-        
         // ============================================================
-        // SCREENSHOT RENDERING - ИСПРАВЛЕННАЯ ВЕРСИЯ
+        // SCREENSHOT RENDERING - НАДЕЖНАЯ ВЕРСИЯ ЧЕРЕЗ html2canvas
         // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
-            const rect = card.getBoundingClientRect();
-            const scale = 2;
             
-            const canvas = document.createElement('canvas');
-            canvas.width = rect.width * scale;
-            canvas.height = rect.height * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.scale(scale, scale);
-            
-            // Background
-            const gradient = ctx.createLinearGradient(0, 0, rect.width, rect.height);
-            gradient.addColorStop(0, '#0f0f14');
-            gradient.addColorStop(0.5, '#1a0f24');
-            gradient.addColorStop(1, '#0f0f14');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, rect.width, rect.height);
-            
-            // Mesh gradients
-            const meshGradient1 = ctx.createRadialGradient(
-                rect.width * 0.2, rect.height * 0.3, 0,
-                rect.width * 0.2, rect.height * 0.3, rect.width * 0.4
-            );
-            meshGradient1.addColorStop(0, 'rgba(196, 240, 77, 0.15)');
-            meshGradient1.addColorStop(1, 'transparent');
-            ctx.fillStyle = meshGradient1;
-            ctx.fillRect(0, 0, rect.width, rect.height);
-            
-            const meshGradient2 = ctx.createRadialGradient(
-                rect.width * 0.8, rect.height * 0.7, 0,
-                rect.width * 0.8, rect.height * 0.7, rect.width * 0.4
-            );
-            meshGradient2.addColorStop(0, 'rgba(139, 92, 246, 0.2)');
-            meshGradient2.addColorStop(1, 'transparent');
-            ctx.fillStyle = meshGradient2;
-            ctx.fillRect(0, 0, rect.width, rect.height);
-            
-            // Render map - ИСПРАВЛЕННЫЙ МЕТОД
-            if (cardMap && (matchedRoute || route).length > 0) {
-                const mapCanvas = await renderLeafletMapToCanvas(cardMap, document.getElementById('cardMap'));
-                const mapRect = document.getElementById('cardMap').getBoundingClientRect();
-                ctx.drawImage(mapCanvas, mapRect.left - rect.left, mapRect.top - rect.top, mapRect.width, mapRect.height);
+            // Гарантируем, что карта правильно отрендерена перед снимком
+            if (cardMap) {
+                cardMap.invalidateSize();
+                await new Promise(resolve => setTimeout(resolve, 800)); // Ждем загрузки тайлов
             }
             
-            // Logo
-            ctx.font = '600 13px "Space Grotesk", sans-serif';
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-            ctx.textAlign = 'left';
-            ctx.fillText('● TRAILA', 28, 40);
-            
-            // Date
-            ctx.font = '500 11px "Inter", sans-serif';
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.textAlign = 'right';
-            ctx.fillText(document.getElementById('cardDate').textContent, rect.width - 28, 40);
-            
-            // Stats
-            const statsY = rect.height - 60;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(28, statsY);
-            ctx.lineTo(rect.width - 28, statsY);
-            ctx.stroke();
-            
-            const statsData = [
-                { label: 'DISTANCE', value: document.getElementById('cardDistance').textContent, unit: 'km' },
-                { label: 'TIME', value: document.getElementById('cardTime').textContent, unit: '' },
-                { label: 'PACE', value: document.getElementById('cardPace').textContent, unit: '/km' }
-            ];
-            
-            const colWidth = (rect.width - 56) / 3;
-            
-            statsData.forEach((stat, i) => {
-                const x = 28 + i * colWidth;
-                ctx.font = '600 9px "Inter", sans-serif';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.textAlign = 'left';
-                ctx.fillText(stat.label, x, statsY + 20);
-                
-                ctx.font = '500 24px "Space Grotesk", sans-serif';
-                ctx.fillStyle = '#ffffff';
-                ctx.fillText(stat.value, x, statsY + 48);
-                
-                if (stat.unit) {
-                    const valueWidth = ctx.measureText(stat.value).width;
-                    ctx.font = '500 11px "Inter", sans-serif';
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.fillText(stat.unit, x + valueWidth + 2, statsY + 48);
-                }
-            });
-            
-            return canvas;
-        }
-        
-        async function renderLeafletMapToCanvas(map, container) {
-            const rect = container.getBoundingClientRect();
-            const scale = 2;
-            const canvas = document.createElement('canvas');
-            canvas.width = rect.width * scale;
-            canvas.height = rect.height * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.scale(scale, scale);
-            
-            // Background
-            ctx.fillStyle = '#0a0a0b';
-            ctx.fillRect(0, 0, rect.width, rect.height);
-            
-            // Получаем все тайлы
-            const tilePane = map.getPane('tilePane');
-            if (!tilePane) {
-                console.warn('Tile pane not found');
-                return canvas;
-            }
-            
-            const tiles = tilePane.querySelectorAll('img');
-            console.log('Found tiles:', tiles.length);
-            
-            if (tiles.length === 0) {
-                console.warn('No tiles found');
-                return canvas;
-            }
-            
-            const promises = [];
-            
-            tiles.forEach((tile, index) => {
-                // Получаем позицию тайла через getBoundingClientRect
-                const tileRect = tile.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                
-                const x = tileRect.left - containerRect.left;
-                const y = tileRect.top - containerRect.top;
-                const width = tileRect.width;
-                const height = tileRect.height;
-                
-                console.log(`Tile ${index}:`, { x, y, width, height, src: tile.src.substring(0, 50) });
-                
-                promises.push(new Promise((resolve) => {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-                    
-                    img.onload = () => {
-                        try {
-                            ctx.drawImage(img, x, y, width, height);
-                            console.log(`Tile ${index} drawn successfully`);
-                        } catch (e) {
-                            console.error(`Error drawing tile ${index}:`, e);
-                        }
-                        resolve();
-                    };
-                    
-                    img.onerror = (e) => {
-                        console.error(`Error loading tile ${index}:`, e);
-                        resolve();
-                    };
-                    
-                    img.src = tile.src;
-                }));
-            });
-            
-            await Promise.all(promises);
-            
-            // Draw polylines
-            const displayRoute = matchedRoute || route;
-            const distance = calcDistance(displayRoute);
-            
-            if (cardGlow && displayRoute.length > 0) {
-                drawPolylineOnCanvas(ctx, map, cardGlow, {
-                    color: themeConfig.glowColor,
-                    weight: distance > 5 ? 6 : 10,
-                    opacity: distance > 5 ? 0.4 : 0.3
+            try {
+                // html2canvas автоматически обрабатывает CSS-градиенты, шрифты и изображения
+                const canvas = await html2canvas(card, {
+                    useCORS: true,
+                    allowTaint: false,
+                    backgroundColor: '#0f0f14',
+                    scale: 2, // Высокое разрешение для четкости
+                    logging: false,
+                    ignoreElements: (element) => element.id === 'cardLoading'
                 });
+                return canvas;
+            } catch (e) {
+                console.error("html2canvas failed:", e);
+                throw e;
             }
-            if (cardPolyline && displayRoute.length > 0) {
-                drawPolylineOnCanvas(ctx, map, cardPolyline, {
-                    color: themeConfig.lineColor,
-                    weight: distance > 5 ? 3 : 4,
-                    opacity: 1
-                });
-            }
-            
-            return canvas;
-        }
-        
-        function drawPolylineOnCanvas(ctx, map, layer, style) {
-            const latlngs = layer.getLatLngs();
-            if (latlngs.length < 2) return;
-            
-            ctx.strokeStyle = style.color;
-            ctx.lineWidth = style.weight;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.globalAlpha = style.opacity;
-            
-            ctx.beginPath();
-            latlngs.forEach((ll, i) => {
-                const point = map.latLngToContainerPoint(ll);
-                if (i === 0) ctx.moveTo(point.x, point.y);
-                else ctx.lineTo(point.x, point.y);
-            });
-            ctx.stroke();
-            ctx.globalAlpha = 1;
         }
         
         async function saveCard() {
@@ -1722,7 +1523,9 @@
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = `traila-${Date.now()}.png`;
+                    document.body.appendChild(a);
                     a.click();
+                    document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                     showToast('Saved to downloads');
                 }, 'image/png');
@@ -1767,7 +1570,9 @@
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `traila-${Date.now()}.png`;
+                document.body.appendChild(a);
                 a.click();
+                document.body.removeChild(a);
                 showToast('Image saved — share manually');
             });
         }
