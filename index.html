@@ -7,11 +7,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Traila</title>
     
-    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -866,20 +863,6 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
         
-        function calculateBearing(p1, p2) {
-            const lat1 = p1.lat * Math.PI / 180;
-            const lat2 = p2.lat * Math.PI / 180;
-            const dLon = (p2.lng - p1.lng) * Math.PI / 180;
-            
-            const y = Math.sin(dLon) * Math.cos(lat2);
-            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-            
-            let bearing = Math.atan2(y, x) * 180 / Math.PI;
-            bearing = (bearing + 360) % 360;
-            
-            return bearing;
-        }
-        
         // ============================================================
         // MAP MATCHING
         // ============================================================
@@ -896,46 +879,41 @@
             const coords = grouped.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
             const radiuses = grouped.map(() => 25).join(';');
             
-            const providers = [
-                `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`,
-                `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`
-            ];
+            const url = `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
             
-            for (const url of providers) {
-                try {
-                    const res = await fetch(url);
-                    const data = await res.json();
-                    
-                    if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
-                        const geometry = data.matchings[0].geometry;
-                        if (geometry && geometry.coordinates && geometry.coordinates.length > 0) {
-                            const snapped = geometry.coordinates.map(c => ({
-                                lat: c[1],
-                                lng: c[0],
-                                t: Date.now()
-                            }));
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
+                    const geometry = data.matchings[0].geometry;
+                    if (geometry && geometry.coordinates && geometry.coordinates.length > 0) {
+                        const snapped = geometry.coordinates.map(c => ({
+                            lat: c[1],
+                            lng: c[0],
+                            t: Date.now()
+                        }));
+                        
+                        const startPoint = points[0];
+                        const endPoint = points[points.length - 1];
+                        
+                        if (snapped.length > 0) {
+                            const firstDist = haversineDistance(snapped[0], startPoint);
+                            const lastDist = haversineDistance(snapped[snapped.length - 1], endPoint);
                             
-                            const startPoint = points[0];
-                            const endPoint = points[points.length - 1];
-                            
-                            if (snapped.length > 0) {
-                                const firstDist = haversineDistance(snapped[0], startPoint);
-                                const lastDist = haversineDistance(snapped[snapped.length - 1], endPoint);
-                                
-                                if (firstDist > 10) {
-                                    snapped.unshift(startPoint);
-                                }
-                                if (lastDist > 10) {
-                                    snapped.push(endPoint);
-                                }
+                            if (firstDist > 10) {
+                                snapped.unshift(startPoint);
                             }
-                            
-                            return snapped;
+                            if (lastDist > 10) {
+                                snapped.push(endPoint);
+                            }
                         }
+                        
+                        return snapped;
                     }
-                } catch (e) {
-                    console.warn('Map matching provider failed:', e);
                 }
+            } catch (e) {
+                console.warn('Map matching failed:', e);
             }
             
             return points;
@@ -1036,6 +1014,7 @@
         let processingQueue = false;
         let cardMapReady = false;
         let routeForCard = [];
+        let isFirstPoint = true;
         
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -1104,12 +1083,14 @@
                 mainMap.removeLayer(startMarker);
                 startMarker = null;
             }
-            startMarker = L.divIcon({
-                className: 'start-dot',
-                iconSize: [10, 10],
-                iconAnchor: [5, 5]
-            });
-            startMarker = L.marker([lat, lng], { icon: startMarker, zIndexOffset: 1000 }).addTo(mainMap);
+            startMarker = L.circleMarker([lat, lng], {
+                radius: 5,
+                color: '#4ade80',
+                fillColor: '#4ade80',
+                fillOpacity: 1,
+                weight: 2,
+                opacity: 1
+            }).addTo(mainMap);
         }
         
         function addEndDot(lat, lng) {
@@ -1117,12 +1098,14 @@
                 mainMap.removeLayer(endMarker);
                 endMarker = null;
             }
-            endMarker = L.divIcon({
-                className: 'end-dot',
-                iconSize: [10, 10],
-                iconAnchor: [5, 5]
-            });
-            endMarker = L.marker([lat, lng], { icon: endMarker, zIndexOffset: 1000 }).addTo(mainMap);
+            endMarker = L.circleMarker([lat, lng], {
+                radius: 5,
+                color: '#f87171',
+                fillColor: '#f87171',
+                fillOpacity: 1,
+                weight: 2,
+                opacity: 1
+            }).addTo(mainMap);
         }
         
         function clearStartEndDots() {
@@ -1181,7 +1164,7 @@
                 }
             }
             
-            // Запрашиваем локацию сразу
+            // Запрашиваем локацию
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
@@ -1192,7 +1175,7 @@
                         updateLocationMarker(lat, lng);
                     },
                     () => {
-                        console.log('Geolocation failed, using default');
+                        console.log('Geolocation failed');
                     },
                     { enableHighAccuracy: true, timeout: 5000 }
                 );
@@ -1200,6 +1183,11 @@
         }
         
         function recenterMap() {
+            if (lastKnownPosition) {
+                mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true });
+                return;
+            }
+            
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
@@ -1209,12 +1197,8 @@
                         mainMap.setView([lat, lng], 17, { animate: true });
                         updateLocationMarker(lat, lng);
                     },
-                    () => {
-                        if (lastKnownPosition) {
-                            mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true });
-                        }
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 10000 }
                 );
             }
         }
@@ -1239,11 +1223,13 @@
             pauseStart = null;
             pointQueue = [];
             processingQueue = false;
+            isFirstPoint = true;
             
             kalmanLat.reset();
             kalmanLng.reset();
             lastAcceptedPoint = null;
             
+            // Удаляем старые точки старта/финиша
             clearStartEndDots();
             
             document.getElementById('btnRowIdle').style.display = 'none';
@@ -1252,19 +1238,26 @@
             
             timerInterval = setInterval(updateLiveStats, 1000);
             
+            // Берем текущую позицию и центрируем
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    lastKnownPosition = { lat, lng };
+                    mainMap.setView([lat, lng], 17);
+                    updateLocationMarker(lat, lng);
+                    
+                    // Добавляем первую точку сразу
+                    handleGPSUpdate(pos);
+                },
+                () => {},
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+            
             watchId = navigator.geolocation.watchPosition(
                 handleGPSUpdate,
                 (err) => {
                     console.warn('GPS error:', err);
-                    setTimeout(() => {
-                        if (isTracking) {
-                            navigator.geolocation.getCurrentPosition(
-                                handleGPSUpdate,
-                                () => {},
-                                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-                            );
-                        }
-                    }, 2000);
                 },
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
             );
@@ -1290,7 +1283,7 @@
                     navigator.geolocation.getCurrentPosition(
                         handleGPSUpdate,
                         () => {},
-                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                        { enableHighAccuracy: true, timeout: 15000 }
                     );
                 }
             }, 3000);
@@ -1349,7 +1342,6 @@
                 if (timeDiff > 0) {
                     const speed = dist / timeDiff;
                     if (speed > 12) {
-                        console.warn('GPS jump detected');
                         processPointQueue();
                         return;
                     }
@@ -1367,10 +1359,19 @@
             polyline.addLatLng([filtered.lat, filtered.lng]);
             glowLine.addLatLng([filtered.lat, filtered.lng]);
             
+            // Центрируем карту на новой точке
             mainMap.panTo([filtered.lat, filtered.lng], { animate: true, duration: 0.3 });
             
+            // Добавляем стартовую точку только один раз
             if (route.length === 1) {
                 addStartDot(filtered.lat, filtered.lng);
+                // Удаляем старую точку локации, чтобы не было дубляжа
+                if (locationMarker) {
+                    mainMap.removeLayer(locationMarker);
+                    locationMarker = null;
+                }
+                // Создаем новую точку локации поверх
+                updateLocationMarker(filtered.lat, filtered.lng);
             }
             
             saveRouteToStorage();
@@ -1415,7 +1416,6 @@
             }
             
             stopAudioKeepAlive();
-            removeLocationMarker();
             
             isTracking = false;
             isPaused = false;
@@ -1438,9 +1438,13 @@
                 matchedRoute = route;
             }
             
+            // Добавляем финишную точку
             if (matchedRoute && matchedRoute.length > 0) {
                 addEndDot(matchedRoute[matchedRoute.length - 1].lat, matchedRoute[matchedRoute.length - 1].lng);
             }
+            
+            // Удаляем точку локации
+            removeLocationMarker();
             
             clearRouteStorage();
             
@@ -1459,6 +1463,12 @@
             polyline.setLatLngs([]);
             glowLine.setLatLngs([]);
             clearStartEndDots();
+            
+            // Восстанавливаем точку локации
+            if (lastKnownPosition) {
+                updateLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng);
+            }
+            
             updateLiveStats();
             
             if (cardMap) {
@@ -1517,10 +1527,9 @@
             const opts = { day: 'numeric', month: 'short', year: 'numeric' };
             document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', opts).toUpperCase();
             
-            // Ждем рендеринга
             setTimeout(() => {
                 initCardMap();
-            }, 500);
+            }, 300);
         }
         
         function initCardMap() {
@@ -1532,10 +1541,8 @@
                 cardMapReady = false;
             }
             
-            // Очищаем контейнер
             container.innerHTML = '';
             
-            // Создаем новый div для карты
             const mapDiv = document.createElement('div');
             mapDiv.id = 'cardMap';
             mapDiv.style.width = '100%';
@@ -1566,7 +1573,7 @@
                     const distance = calcDistance(routeForCard);
                     const displayRoute = distance > 3 ? simplifyTrack(routeForCard, 0.00005) : routeForCard;
                     
-                    // Глоу линия
+                    // Глоу
                     const glow = L.polyline([], {
                         color: themeConfig.glowColor,
                         weight: distance > 5 ? 6 : 10,
@@ -1599,7 +1606,7 @@
                             weight: 2
                         }).addTo(cardMap);
                         
-                        // Финишная точка
+                        // Финишная
                         if (displayRoute.length > 1) {
                             const last = displayRoute[displayRoute.length - 1];
                             L.circleMarker([last.lat, last.lng], {
@@ -1616,29 +1623,26 @@
                     if (bounds.isValid()) {
                         cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
                     }
+                    
+                    cardMapReady = true;
+                    
+                    setTimeout(() => {
+                        if (cardMap) {
+                            cardMap.invalidateSize();
+                        }
+                    }, 300);
                 }
-                
-                cardMapReady = true;
-                
-                // Принудительно обновляем размер
-                setTimeout(() => {
-                    if (cardMap) {
-                        cardMap.invalidateSize();
-                    }
-                }, 300);
-                
             } catch (e) {
                 console.error('Card map init error:', e);
             }
         }
         
         // ============================================================
-        // SCREENSHOT - ПЕРЕРАБОТАННЫЙ
+        // SCREENSHOT
         // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
             
-            // Убеждаемся, что карта отрендерилась
             if (cardMap && cardMapReady) {
                 cardMap.invalidateSize();
                 await new Promise(resolve => setTimeout(resolve, 1500));
@@ -1664,7 +1668,7 @@
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
             
-            // Переинициализируем карту перед скриншотом
+            // Пересоздаем карту
             if (cardMap) {
                 cardMap.remove();
                 cardMap = null;
@@ -1773,7 +1777,7 @@
                 navigator.geolocation.getCurrentPosition(
                     handleGPSUpdate,
                     () => {},
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    { enableHighAccuracy: true, timeout: 10000 }
                 );
             }
         });
