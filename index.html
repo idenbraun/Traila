@@ -11,10 +11,9 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- html2canvas для надежных скриншотов без белого фона -->
+    <!-- html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -58,7 +57,7 @@
             position: absolute;
             inset: 0;
             z-index: 1;
-            background: #0a0a0b; /* Фолбэк, если карта грузится */
+            background: #0a0a0b;
         }
         
         #map, #map * {
@@ -358,7 +357,7 @@
             aspect-ratio: 9 / 16;
             border-radius: 28px;
             overflow: hidden;
-            background: linear-gradient(160deg, #0f0f14 0%, #1a0f24 50%, #0f0f14 100%);
+            background: #0f0f14;
             box-shadow: 0 30px 80px -20px rgba(0,0,0,0.8);
             animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -432,7 +431,11 @@
             min-height: 200px;
         }
         
-        #cardMap { width: 100%; height: 100%; }
+        #cardMap { 
+            width: 100%; 
+            height: 100%; 
+            background: #0a0a0b;
+        }
         .card-map .leaflet-control-attribution { display: none !important; }
         
         .card-stats {
@@ -594,6 +597,25 @@
             font-size: 13px;
             font-weight: 600;
         }
+
+        /* Простая точка */
+        .location-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #c4f04d;
+            border: 2px solid rgba(196, 240, 77, 0.4);
+            box-shadow: 0 0 20px rgba(196, 240, 77, 0.15);
+        }
+
+        .start-dot, .end-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.4);
+        }
+        .start-dot { background: #4ade80; }
+        .end-dot { background: #f87171; }
     </style>
 </head>
 <body>
@@ -694,7 +716,7 @@
                         <div class="card-date" id="cardDate">—</div>
                     </div>
                     
-                    <div class="card-map">
+                    <div class="card-map" id="cardMapContainer">
                         <div id="cardMap"></div>
                         <div class="loading-overlay" id="cardLoading">
                             <div class="spinner"></div>
@@ -750,7 +772,7 @@
         // KALMAN FILTER
         // ============================================================
         class KalmanFilter {
-            constructor(processNoise = 0.00001, measurementNoise = 0.0001) {
+            constructor(processNoise = 0.00005, measurementNoise = 0.0005) {
                 this.Q = processNoise;
                 this.R = measurementNoise;
                 this.P = [[1, 0], [0, 1]];
@@ -865,37 +887,78 @@
             if (points.length < 2) return points;
             
             let simplified = points;
-            if (points.length > 80) {
-                simplified = simplifyTrack(points, 0.00003);
+            if (points.length > 120) {
+                simplified = simplifyTrack(points, 0.00002);
             }
             
-            const coords = simplified.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-            const radiuses = simplified.map(() => 30).join(';');
+            const grouped = groupPoints(simplified, 5);
             
-            const url = `https://routing.openstreetmap.de/routed-foot/match/v1/foot/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
+            const coords = grouped.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+            const radiuses = grouped.map(() => 25).join(';');
             
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                
-                if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
-                    const geometry = data.matchings[0].geometry;
-                    if (geometry && geometry.coordinates) {
-                        return geometry.coordinates.map(c => ({
-                            lat: c[1],
-                            lng: c[0],
-                            t: Date.now()
-                        }));
+            const providers = [
+                `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`,
+                `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`
+            ];
+            
+            for (const url of providers) {
+                try {
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    
+                    if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
+                        const geometry = data.matchings[0].geometry;
+                        if (geometry && geometry.coordinates && geometry.coordinates.length > 0) {
+                            const snapped = geometry.coordinates.map(c => ({
+                                lat: c[1],
+                                lng: c[0],
+                                t: Date.now()
+                            }));
+                            
+                            const startPoint = points[0];
+                            const endPoint = points[points.length - 1];
+                            
+                            if (snapped.length > 0) {
+                                const firstDist = haversineDistance(snapped[0], startPoint);
+                                const lastDist = haversineDistance(snapped[snapped.length - 1], endPoint);
+                                
+                                if (firstDist > 10) {
+                                    snapped.unshift(startPoint);
+                                }
+                                if (lastDist > 10) {
+                                    snapped.push(endPoint);
+                                }
+                            }
+                            
+                            return snapped;
+                        }
                     }
+                } catch (e) {
+                    console.warn('Map matching provider failed:', e);
                 }
-            } catch (e) {
-                console.warn('Map matching failed:', e);
             }
             
             return points;
         }
         
-        function simplifyTrack(points, tolerance = 0.0001) {
+        function groupPoints(points, threshold) {
+            if (points.length <= 2) return points;
+            
+            const result = [points[0]];
+            let last = points[0];
+            
+            for (let i = 1; i < points.length; i++) {
+                const dist = haversineDistance(last, points[i]);
+                if (dist > threshold) {
+                    result.push(points[i]);
+                    last = points[i];
+                }
+            }
+            
+            return result;
+        }
+        
+        function simplifyTrack(points, tolerance = 0.00003) {
             if (points.length <= 2) return points;
             
             let maxDist = 0, maxIndex = 0;
@@ -963,13 +1026,17 @@
         let timerInterval;
         let lastKnownPosition = null;
         let locationMarker = null;
-        let kalmanLat = new KalmanFilter(0.00001, 0.0001);
-        let kalmanLng = new KalmanFilter(0.00001, 0.0001);
+        let startMarker = null;
+        let endMarker = null;
+        let kalmanLat = new KalmanFilter(0.00002, 0.0003);
+        let kalmanLng = new KalmanFilter(0.00002, 0.0003);
         let lastAcceptedPoint = null;
         let activityProfile = 'foot';
-        let currentHeading = 0;
+        let pointQueue = [];
+        let processingQueue = false;
+        let cardMapReady = false;
+        let routeForCard = [];
         
-        // НАДЕЖНЫЕ ТЁМНЫЕ ТАЙЛЫ (CartoDB Dark), работают через Cloudflare в РФ
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
             subdomains: ['a', 'b', 'c', 'd'],
@@ -1001,85 +1068,71 @@
         }
         
         // ============================================================
-        // CURRENT LOCATION MARKER
+        // LOCATION MARKER - ПРОСТАЯ ТОЧКА
         // ============================================================
-        function createLocationMarkerHTML(heading = 0) {
-            return `
-                <div style="position: relative; width: 32px; height: 32px;">
-                    <div style="
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        width: 20px;
-                        height: 20px;
-                        border-radius: 50%;
-                        background: ${themeConfig.markerColor};
-                        opacity: 0.2;
-                        animation: markerPulse 2s ease-out infinite;
-                    "></div>
-                    <div style="
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%) rotate(${heading}deg);
-                        width: 0;
-                        height: 0;
-                        border-left: 6px solid transparent;
-                        border-right: 6px solid transparent;
-                        border-bottom: 12px solid ${themeConfig.markerColor};
-                        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-                        transition: transform 0.3s ease;
-                    "></div>
-                    <div style="
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        width: 12px;
-                        height: 12px;
-                        border-radius: 50%;
-                        background: ${themeConfig.markerColor};
-                        border: 3px solid #fff;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    "></div>
-                </div>
-                <style>
-                    @keyframes markerPulse {
-                        0% { transform: translate(-50%, -50%) scale(1); opacity: 0.2; }
-                        100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
-                    }
-                </style>
-            `;
+        function createLocationDot() {
+            return L.divIcon({
+                className: 'location-dot',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
         }
         
-        function updateCurrentLocationMarker(lat, lng, heading = 0) {
-            currentHeading = heading;
-            
+        function updateLocationMarker(lat, lng) {
             if (!locationMarker) {
-                const markerIcon = L.divIcon({
-                    className: '',
-                    html: createLocationMarkerHTML(heading),
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 16]
-                });
-                
-                locationMarker = L.marker([lat, lng], { icon: markerIcon, zIndexOffset: 1000 }).addTo(mainMap);
+                locationMarker = L.marker([lat, lng], { 
+                    icon: createLocationDot(), 
+                    zIndexOffset: 1000 
+                }).addTo(mainMap);
             } else {
                 locationMarker.setLatLng([lat, lng]);
-                locationMarker.setIcon(L.divIcon({
-                    className: '',
-                    html: createLocationMarkerHTML(heading),
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 16]
-                }));
             }
         }
         
-        function removeCurrentLocationMarker() {
+        function removeLocationMarker() {
             if (locationMarker) {
                 mainMap.removeLayer(locationMarker);
                 locationMarker = null;
+            }
+        }
+        
+        // ============================================================
+        // START/END MARKERS
+        // ============================================================
+        function addStartDot(lat, lng) {
+            if (startMarker) {
+                mainMap.removeLayer(startMarker);
+                startMarker = null;
+            }
+            startMarker = L.divIcon({
+                className: 'start-dot',
+                iconSize: [10, 10],
+                iconAnchor: [5, 5]
+            });
+            startMarker = L.marker([lat, lng], { icon: startMarker, zIndexOffset: 1000 }).addTo(mainMap);
+        }
+        
+        function addEndDot(lat, lng) {
+            if (endMarker) {
+                mainMap.removeLayer(endMarker);
+                endMarker = null;
+            }
+            endMarker = L.divIcon({
+                className: 'end-dot',
+                iconSize: [10, 10],
+                iconAnchor: [5, 5]
+            });
+            endMarker = L.marker([lat, lng], { icon: endMarker, zIndexOffset: 1000 }).addTo(mainMap);
+        }
+        
+        function clearStartEndDots() {
+            if (startMarker) {
+                mainMap.removeLayer(startMarker);
+                startMarker = null;
+            }
+            if (endMarker) {
+                mainMap.removeLayer(endMarker);
+                endMarker = null;
             }
         }
         
@@ -1092,7 +1145,6 @@
                 attributionControl: false
             }).setView([55.7558, 37.6173], 15);
             
-            // Добавлены subdomains и crossOrigin для стабильности и скриншотов
             L.tileLayer(themeConfig.tileUrl, { 
                 maxZoom: 19,
                 subdomains: themeConfig.subdomains,
@@ -1123,17 +1175,24 @@
                     glowLine.addLatLng([p.lat, p.lng]);
                 });
                 updateLiveStats();
+                
+                if (route.length > 0) {
+                    addStartDot(route[0].lat, route[0].lng);
+                }
             }
             
+            // Запрашиваем локацию сразу
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                        mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 16);
-                        updateCurrentLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng, 0);
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        lastKnownPosition = { lat, lng };
+                        mainMap.setView([lat, lng], 16);
+                        updateLocationMarker(lat, lng);
                     },
                     () => {
-                        console.log('Geolocation failed, using default location');
+                        console.log('Geolocation failed, using default');
                     },
                     { enableHighAccuracy: true, timeout: 5000 }
                 );
@@ -1144,9 +1203,11 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                        mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17, { animate: true });
-                        updateCurrentLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng, currentHeading);
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        lastKnownPosition = { lat, lng };
+                        mainMap.setView([lat, lng], 17, { animate: true });
+                        updateLocationMarker(lat, lng);
                     },
                     () => {
                         if (lastKnownPosition) {
@@ -1176,10 +1237,14 @@
             startTime = Date.now();
             pausedDuration = 0;
             pauseStart = null;
+            pointQueue = [];
+            processingQueue = false;
             
             kalmanLat.reset();
             kalmanLng.reset();
             lastAcceptedPoint = null;
+            
+            clearStartEndDots();
             
             document.getElementById('btnRowIdle').style.display = 'none';
             document.getElementById('btnRowActive').style.display = 'flex';
@@ -1232,36 +1297,49 @@
         }
         
         function handleGPSUpdate(pos) {
-            if (!mainMap) return; // Защита от вызова до инициализации карты
+            if (!mainMap) return;
             
-            const { latitude, longitude, accuracy, heading } = pos.coords;
+            const { latitude, longitude, accuracy } = pos.coords;
             
             lastKnownPosition = { lat: latitude, lng: longitude };
             updateGPSIndicator(accuracy);
             
-            let direction = heading;
-            if (direction === null || direction === undefined || isNaN(direction)) {
-                if (route.length >= 2) {
-                    direction = calculateBearing(route[route.length - 2], route[route.length - 1]);
-                } else {
-                    direction = currentHeading;
-                }
-            }
-            
-            updateCurrentLocationMarker(latitude, longitude, direction);
+            // Всегда обновляем точку
+            updateLocationMarker(latitude, longitude);
             
             if (isPaused) {
                 mainMap.panTo([latitude, longitude], { animate: true, duration: 0.5 });
                 return;
             }
             
-            if (accuracy > 20) return;
+            if (accuracy > 25) return;
             
-            const filtered = {
-                lat: kalmanLat.filter(latitude, longitude).lat,
-                lng: kalmanLng.filter(longitude, latitude).lng,
+            pointQueue.push({
+                lat: latitude,
+                lng: longitude,
                 t: Date.now(),
                 accuracy: accuracy
+            });
+            
+            if (!processingQueue) {
+                processPointQueue();
+            }
+        }
+        
+        function processPointQueue() {
+            if (pointQueue.length === 0) {
+                processingQueue = false;
+                return;
+            }
+            
+            processingQueue = true;
+            const point = pointQueue.shift();
+            
+            const filtered = {
+                lat: kalmanLat.filter(point.lat, point.lng).lat,
+                lng: kalmanLng.filter(point.lng, point.lat).lng,
+                t: point.t,
+                accuracy: point.accuracy
             };
             
             if (lastAcceptedPoint) {
@@ -1270,13 +1348,17 @@
                 
                 if (timeDiff > 0) {
                     const speed = dist / timeDiff;
-                    if (speed > 15) {
-                        console.warn('GPS jump detected, ignoring point');
+                    if (speed > 12) {
+                        console.warn('GPS jump detected');
+                        processPointQueue();
                         return;
                     }
                 }
                 
-                if (dist < 2) return;
+                if (dist < 1.5) {
+                    processPointQueue();
+                    return;
+                }
             }
             
             lastAcceptedPoint = filtered;
@@ -1285,10 +1367,16 @@
             polyline.addLatLng([filtered.lat, filtered.lng]);
             glowLine.addLatLng([filtered.lat, filtered.lng]);
             
-            mainMap.panTo([filtered.lat, filtered.lng], { animate: true, duration: 0.5 });
+            mainMap.panTo([filtered.lat, filtered.lng], { animate: true, duration: 0.3 });
+            
+            if (route.length === 1) {
+                addStartDot(filtered.lat, filtered.lng);
+            }
             
             saveRouteToStorage();
             updateLiveStats();
+            
+            setTimeout(processPointQueue, 20);
         }
         
         function togglePause() {
@@ -1327,7 +1415,7 @@
             }
             
             stopAudioKeepAlive();
-            removeCurrentLocationMarker();
+            removeLocationMarker();
             
             isTracking = false;
             isPaused = false;
@@ -1350,7 +1438,15 @@
                 matchedRoute = route;
             }
             
+            if (matchedRoute && matchedRoute.length > 0) {
+                addEndDot(matchedRoute[matchedRoute.length - 1].lat, matchedRoute[matchedRoute.length - 1].lng);
+            }
+            
             clearRouteStorage();
+            
+            // Сохраняем маршрут для карточки
+            routeForCard = matchedRoute || route;
+            
             showFinishScreen();
         }
         
@@ -1358,14 +1454,19 @@
             document.getElementById('finishScreen').classList.add('hidden');
             document.getElementById('trackingScreen').classList.remove('hidden');
             route = [];
-            matchedRoute = null;
+            matchedRoute = [];
+            routeForCard = [];
             polyline.setLatLngs([]);
             glowLine.setLatLngs([]);
+            clearStartEndDots();
             updateLiveStats();
+            
             if (cardMap) {
                 cardMap.remove();
                 cardMap = null;
+                cardMapReady = false;
             }
+            
             clearRouteStorage();
         }
         
@@ -1401,12 +1502,11 @@
             }
         }
         
-        async function showFinishScreen() {
+        function showFinishScreen() {
             document.getElementById('trackingScreen').classList.add('hidden');
             document.getElementById('finishScreen').classList.remove('hidden');
             
-            const displayRoute = matchedRoute || route;
-            const d = calcDistance(displayRoute);
+            const d = calcDistance(routeForCard);
             const elapsed = getElapsedTime();
             
             document.getElementById('cardDistance').textContent = d.toFixed(2);
@@ -1417,91 +1517,145 @@
             const opts = { day: 'numeric', month: 'short', year: 'numeric' };
             document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', opts).toUpperCase();
             
-            setTimeout(() => initCardMap(), 300);
+            // Ждем рендеринга
+            setTimeout(() => {
+                initCardMap();
+            }, 500);
         }
         
         function initCardMap() {
-            if (cardMap) cardMap.remove();
+            const container = document.getElementById('cardMap');
             
-            cardMap = L.map('cardMap', {
-                zoomControl: false,
-                attributionControl: false,
-                dragging: false,
-                scrollWheelZoom: false,
-                doubleClickZoom: false,
-                touchZoom: false,
-                boxZoom: false,
-                keyboard: false,
-                tap: false
-            });
+            if (cardMap) {
+                cardMap.remove();
+                cardMap = null;
+                cardMapReady = false;
+            }
             
-            L.tileLayer(themeConfig.tileUrl, { 
-                maxZoom: 19,
-                subdomains: themeConfig.subdomains,
-                crossOrigin: 'anonymous'
-            }).addTo(cardMap);
+            // Очищаем контейнер
+            container.innerHTML = '';
             
-            const displayRoute = matchedRoute || route;
+            // Создаем новый div для карты
+            const mapDiv = document.createElement('div');
+            mapDiv.id = 'cardMap';
+            mapDiv.style.width = '100%';
+            mapDiv.style.height = '100%';
+            mapDiv.style.background = '#0a0a0b';
+            container.appendChild(mapDiv);
             
-            if (displayRoute.length > 0) {
-                const distance = calcDistance(displayRoute);
-                const simplifiedRoute = distance > 3 ? simplifyTrack(displayRoute, 0.00005) : displayRoute;
-                
-                cardGlow = L.polyline([], {
-                    color: themeConfig.glowColor,
-                    weight: distance > 5 ? 6 : 10,
-                    opacity: distance > 5 ? 0.4 : 0.3,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(cardMap);
-                
-                cardPolyline = L.polyline([], {
-                    color: themeConfig.lineColor,
-                    weight: distance > 5 ? 3 : 4,
-                    opacity: 1,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(cardMap);
-                
-                simplifiedRoute.forEach(p => {
-                    cardPolyline.addLatLng([p.lat, p.lng]);
-                    cardGlow.addLatLng([p.lat, p.lng]);
+            try {
+                cardMap = L.map('cardMap', {
+                    zoomControl: false,
+                    attributionControl: false,
+                    dragging: false,
+                    scrollWheelZoom: false,
+                    doubleClickZoom: false,
+                    touchZoom: false,
+                    boxZoom: false,
+                    keyboard: false,
+                    tap: false
                 });
                 
-                const bounds = cardPolyline.getBounds();
-                if (bounds.isValid()) {
-                    cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+                L.tileLayer(themeConfig.tileUrl, { 
+                    maxZoom: 19,
+                    subdomains: themeConfig.subdomains,
+                    crossOrigin: 'anonymous'
+                }).addTo(cardMap);
+                
+                if (routeForCard && routeForCard.length > 0) {
+                    const distance = calcDistance(routeForCard);
+                    const displayRoute = distance > 3 ? simplifyTrack(routeForCard, 0.00005) : routeForCard;
+                    
+                    // Глоу линия
+                    const glow = L.polyline([], {
+                        color: themeConfig.glowColor,
+                        weight: distance > 5 ? 6 : 10,
+                        opacity: distance > 5 ? 0.4 : 0.3,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(cardMap);
+                    
+                    // Основная линия
+                    const line = L.polyline([], {
+                        color: themeConfig.lineColor,
+                        weight: distance > 5 ? 3 : 4,
+                        opacity: 1,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(cardMap);
+                    
+                    displayRoute.forEach(p => {
+                        glow.addLatLng([p.lat, p.lng]);
+                        line.addLatLng([p.lat, p.lng]);
+                    });
+                    
+                    // Стартовая точка
+                    if (displayRoute.length > 0) {
+                        L.circleMarker([displayRoute[0].lat, displayRoute[0].lng], {
+                            radius: 4,
+                            color: '#4ade80',
+                            fillColor: '#4ade80',
+                            fillOpacity: 1,
+                            weight: 2
+                        }).addTo(cardMap);
+                        
+                        // Финишная точка
+                        if (displayRoute.length > 1) {
+                            const last = displayRoute[displayRoute.length - 1];
+                            L.circleMarker([last.lat, last.lng], {
+                                radius: 4,
+                                color: '#f87171',
+                                fillColor: '#f87171',
+                                fillOpacity: 1,
+                                weight: 2
+                            }).addTo(cardMap);
+                        }
+                    }
+                    
+                    const bounds = line.getBounds();
+                    if (bounds.isValid()) {
+                        cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+                    }
                 }
                 
+                cardMapReady = true;
+                
+                // Принудительно обновляем размер
                 setTimeout(() => {
-                    cardMap.invalidateSize();
-                }, 100);
+                    if (cardMap) {
+                        cardMap.invalidateSize();
+                    }
+                }, 300);
+                
+            } catch (e) {
+                console.error('Card map init error:', e);
             }
         }
         
         // ============================================================
-        // SCREENSHOT RENDERING
+        // SCREENSHOT - ПЕРЕРАБОТАННЫЙ
         // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
             
-            if (cardMap) {
+            // Убеждаемся, что карта отрендерилась
+            if (cardMap && cardMapReady) {
                 cardMap.invalidateSize();
-                await new Promise(resolve => setTimeout(resolve, 800));
+                await new Promise(resolve => setTimeout(resolve, 1500));
             }
             
             try {
                 const canvas = await html2canvas(card, {
                     useCORS: true,
                     allowTaint: false,
-                    backgroundColor: '#0f0f14', // Гарантирует отсутствие прозрачности/белого фона
+                    backgroundColor: '#0f0f14',
                     scale: 2,
                     logging: false,
                     ignoreElements: (element) => element.id === 'cardLoading'
                 });
                 return canvas;
             } catch (e) {
-                console.error("html2canvas failed:", e);
+                console.error('html2canvas failed:', e);
                 throw e;
             }
         }
@@ -1509,6 +1663,17 @@
         async function saveCard() {
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
+            
+            // Переинициализируем карту перед скриншотом
+            if (cardMap) {
+                cardMap.remove();
+                cardMap = null;
+                cardMapReady = false;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 200));
+            initCardMap();
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             try {
                 const canvas = await captureCardAsImage();
@@ -1520,7 +1685,7 @@
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
                     showToast('Saved to downloads');
                 }, 'image/png');
             } catch (e) {
@@ -1534,6 +1699,16 @@
         async function shareCard() {
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
+            
+            if (cardMap) {
+                cardMap.remove();
+                cardMap = null;
+                cardMapReady = false;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 200));
+            initCardMap();
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             try {
                 const canvas = await captureCardAsImage();
@@ -1567,6 +1742,7 @@
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
                 showToast('Image saved — share manually');
             });
         }
