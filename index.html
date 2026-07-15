@@ -61,6 +61,11 @@
             pointer-events: auto !important;
         }
         
+        /* ТЕХНИЧЕСКОЕ УЛУЧШЕНИЕ: Плавное скольжение маркера как в навигаторе */
+        .leaflet-marker-pane {
+            transition: transform 0.6s linear !important;
+        }
+        
         .leaflet-control-attribution { display: none !important; }
         .leaflet-control-zoom { display: none !important; }
         
@@ -595,14 +600,13 @@
             font-weight: 600;
         }
 
-        /* Простая точка */
         .location-dot {
             width: 16px;
             height: 16px;
             border-radius: 50%;
             background: #c4f04d;
             border: 2px solid rgba(196, 240, 77, 0.4);
-            box-shadow: 0 0 20px rgba(196, 240, 77, 0.15);
+            box-shadow: 0 0 20px rgba(196, 240, 77, 0.4);
         }
 
         .start-dot, .end-dot {
@@ -756,7 +760,7 @@
     
     <div class="matching-badge" id="matchingBadge">
         <div class="spinner"></div>
-        <span class="matching-badge-text">Snapping to roads...</span>
+        <span class="matching-badge-text">Обработка трека...</span>
     </div>
     
     <div class="toast" id="toast">
@@ -766,58 +770,35 @@
 
     <script>
         // ============================================================
-        // KALMAN FILTER
+        // СТАБИЛЬНЫЙ 1D КАЛМАН ДЛЯ GPS (ИСПРАВЛЕННЫЙ)
         // ============================================================
-        class KalmanFilter {
-            constructor(processNoise = 0.00005, measurementNoise = 0.0005) {
-                this.Q = processNoise;
-                this.R = measurementNoise;
-                this.P = [[1, 0], [0, 1]];
-                this.X = [0, 0];
+        class GPSKalman {
+            constructor() {
+                this.R = 0.0001; // Шум измерения (точность GPS)
+                this.Q = 0.00001; // Шум процесса (доверие к модели)
+                this.P = 0.0001;  // Ошибка оценки
+                this.X = 0;       // Оценка
                 this.initialized = false;
             }
-            
-            filter(lat, lng) {
+            update(measurement) {
                 if (!this.initialized) {
-                    this.X = [lat, lng];
+                    this.X = measurement;
                     this.initialized = true;
-                    return { lat, lng };
+                    return measurement;
                 }
-                
-                const P_pred = [
-                    [this.P[0][0] + this.Q, this.P[0][1]],
-                    [this.P[1][0], this.P[1][1] + this.Q]
-                ];
-                
-                const K = [
-                    [P_pred[0][0] / (P_pred[0][0] + this.R), 0],
-                    [0, P_pred[1][1] / (P_pred[1][1] + this.R)]
-                ];
-                
-                const y = [lat - this.X[0], lng - this.X[1]];
-                
-                this.X = [
-                    this.X[0] + K[0][0] * y[0],
-                    this.X[1] + K[1][1] * y[1]
-                ];
-                
-                this.P = [
-                    [(1 - K[0][0]) * P_pred[0][0], 0],
-                    [0, (1 - K[1][1]) * P_pred[1][1]]
-                ];
-                
-                return { lat: this.X[0], lng: this.X[1] };
+                const K = this.P / (this.P + this.R);
+                this.X = this.X + K * (measurement - this.X);
+                this.P = (1 - K) * this.P + this.Q;
+                return this.X;
             }
-            
             reset() {
-                this.P = [[1, 0], [0, 1]];
-                this.X = [0, 0];
                 this.initialized = false;
+                this.P = 0.0001;
             }
         }
         
         // ============================================================
-        // AUDIO KEEP-ALIVE
+        // AUDIO KEEP-ALIVE (Для iOS фоновой работы)
         // ============================================================
         let audioCtx = null;
         let audioSource = null;
@@ -827,22 +808,15 @@
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const bufferSize = 4096;
                 audioSource = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-                
                 audioSource.onaudioprocess = (e) => {
                     const output = e.outputBuffer.getChannelData(0);
-                    for (let i = 0; i < output.length; i++) {
-                        output[i] = 0.0000001;
-                    }
+                    for (let i = 0; i < output.length; i++) output[i] = 0.0000001;
                 };
-                
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 0.001;
-                
                 audioSource.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
-            } catch (e) {
-                console.warn('Audio keep-alive failed:', e);
-            }
+            } catch (e) { console.warn('Audio keep-alive failed:', e); }
         }
         
         function stopAudioKeepAlive() {
@@ -863,119 +837,65 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
         
+        // Упрощение трека по дистанции (надежнее и быстрее перпендикулярного)
+        function simplifyTrack(points, toleranceMeters = 3) {
+            if (points.length <= 2) return points;
+            const result = [points[0]];
+            let lastKept = points[0];
+            
+            for (let i = 1; i < points.length - 1; i++) {
+                const dist = haversineDistance(lastKept, points[i]);
+                if (dist > toleranceMeters) {
+                    result.push(points[i]);
+                    lastKept = points[i];
+                }
+            }
+            result.push(points[points.length - 1]);
+            return result;
+        }
+
         // ============================================================
-        // MAP MATCHING
+        // MAP MATCHING С ТАЙМАУТОМ (ДЛЯ РФ)
         // ============================================================
         async function snapToRoad(points, profile = 'foot') {
             if (points.length < 2) return points;
             
-            let simplified = points;
-            if (points.length > 120) {
-                simplified = simplifyTrack(points, 0.00002);
-            }
-            
-            const grouped = groupPoints(simplified, 5);
-            
-            const coords = grouped.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-            const radiuses = grouped.map(() => 25).join(';');
-            
+            const simplified = simplifyTrack(points, 5);
+            if (simplified.length < 2) return simplified;
+
+            const coords = simplified.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+            const radiuses = simplified.map(() => 25).join(';');
             const url = `https://routing.openstreetmap.de/routed-${profile}/match/v1/${profile}/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore`;
             
             try {
-                const res = await fetch(url);
-                const data = await res.json();
+                // Жесткий таймаут 3 секунды, чтобы не вешать интерфейс в РФ
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
                 
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                const data = await res.json();
                 if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
                     const geometry = data.matchings[0].geometry;
                     if (geometry && geometry.coordinates && geometry.coordinates.length > 0) {
-                        const snapped = geometry.coordinates.map(c => ({
-                            lat: c[1],
-                            lng: c[0],
-                            t: Date.now()
-                        }));
-                        
-                        const startPoint = points[0];
-                        const endPoint = points[points.length - 1];
-                        
-                        if (snapped.length > 0) {
-                            const firstDist = haversineDistance(snapped[0], startPoint);
-                            const lastDist = haversineDistance(snapped[snapped.length - 1], endPoint);
-                            
-                            if (firstDist > 10) {
-                                snapped.unshift(startPoint);
-                            }
-                            if (lastDist > 10) {
-                                snapped.push(endPoint);
-                            }
-                        }
-                        
-                        return snapped;
+                        return geometry.coordinates.map(c => ({ lat: c[1], lng: c[0], t: Date.now() }));
                     }
                 }
             } catch (e) {
-                console.warn('Map matching failed:', e);
+                console.warn('Map matching failed or timed out, using client-side track:', e);
             }
             
-            return points;
-        }
-        
-        function groupPoints(points, threshold) {
-            if (points.length <= 2) return points;
-            
-            const result = [points[0]];
-            let last = points[0];
-            
-            for (let i = 1; i < points.length; i++) {
-                const dist = haversineDistance(last, points[i]);
-                if (dist > threshold) {
-                    result.push(points[i]);
-                    last = points[i];
-                }
-            }
-            
-            return result;
-        }
-        
-        function simplifyTrack(points, tolerance = 0.00003) {
-            if (points.length <= 2) return points;
-            
-            let maxDist = 0, maxIndex = 0;
-            const start = points[0], end = points[points.length - 1];
-            
-            for (let i = 1; i < points.length - 1; i++) {
-                const dist = perpendicularDistance(points[i], start, end);
-                if (dist > maxDist) { maxDist = dist; maxIndex = i; }
-            }
-            
-            if (maxDist > tolerance) {
-                const left = simplifyTrack(points.slice(0, maxIndex + 1), tolerance);
-                const right = simplifyTrack(points.slice(maxIndex), tolerance);
-                return left.slice(0, -1).concat(right);
-            }
-            return [start, end];
-        }
-        
-        function perpendicularDistance(point, lineStart, lineEnd) {
-            const dx = lineEnd.lng - lineStart.lng;
-            const dy = lineEnd.lat - lineStart.lat;
-            const mag = Math.sqrt(dx * dx + dy * dy);
-            if (mag === 0) return Math.sqrt((point.lng - lineStart.lng)**2 + (point.lat - lineStart.lat)**2);
-            const u = ((point.lng - lineStart.lng) * dx + (point.lat - lineStart.lat) * dy) / (mag * mag);
-            const x = lineStart.lng + u * dx;
-            const y = lineStart.lat + u * dy;
-            return Math.sqrt((point.lng - x)**2 + (point.lat - y)**2);
+            // Fallback: возвращаем очищенный клиентский трек
+            return simplifyTrack(points, 3);
         }
         
         // ============================================================
         // LOCAL STORAGE
         // ============================================================
         function saveRouteToStorage() {
-            try {
-                localStorage.setItem('traila_route', JSON.stringify(route));
-                localStorage.setItem('traila_start', startTime);
-            } catch (e) {}
+            try { localStorage.setItem('traila_route', JSON.stringify(route)); } catch (e) {}
         }
-        
         function loadRouteFromStorage() {
             try {
                 const saved = localStorage.getItem('traila_route');
@@ -983,10 +903,8 @@
             } catch (e) {}
             return null;
         }
-        
         function clearRouteStorage() {
             localStorage.removeItem('traila_route');
-            localStorage.removeItem('traila_start');
         }
         
         // ============================================================
@@ -994,10 +912,8 @@
         // ============================================================
         let mainMap, cardMap;
         let polyline, glowLine;
-        let cardPolyline, cardGlow;
         let watchId;
         let route = [];
-        let matchedRoute = null;
         let startTime, endTime, pausedDuration = 0, pauseStart = null;
         let isTracking = false;
         let isPaused = false;
@@ -1006,22 +922,19 @@
         let locationMarker = null;
         let startMarker = null;
         let endMarker = null;
-        let kalmanLat = new KalmanFilter(0.00002, 0.0003);
-        let kalmanLng = new KalmanFilter(0.00002, 0.0003);
+        
+        let kalmanLat = new GPSKalman();
+        let kalmanLng = new GPSKalman();
         let lastAcceptedPoint = null;
-        let activityProfile = 'foot';
-        let pointQueue = [];
-        let processingQueue = false;
-        let cardMapReady = false;
+        let lastProcessedTime = 0;
+        let fallbackInterval = null;
         let routeForCard = [];
-        let isFirstPoint = true;
         
         const themeConfig = {
             tileUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
             subdomains: ['a', 'b', 'c', 'd'],
             lineColor: '#c4f04d',
             glowColor: '#c4f04d',
-            markerColor: '#c4f04d'
         };
         
         // ============================================================
@@ -1030,7 +943,6 @@
         function updateGPSIndicator(accuracy) {
             const indicator = document.getElementById('gpsIndicator');
             const text = document.getElementById('gpsText');
-            
             indicator.classList.add('active');
             indicator.classList.remove('good', 'medium', 'bad');
             
@@ -1047,108 +959,48 @@
         }
         
         // ============================================================
-        // LOCATION MARKER - ПРОСТАЯ ТОЧКА
+        // MARKERS
         // ============================================================
         function createLocationDot() {
-            return L.divIcon({
-                className: 'location-dot',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-            });
+            return L.divIcon({ className: 'location-dot', iconSize: [16, 16], iconAnchor: [8, 8] });
         }
         
         function updateLocationMarker(lat, lng) {
             if (!locationMarker) {
-                locationMarker = L.marker([lat, lng], { 
-                    icon: createLocationDot(), 
-                    zIndexOffset: 1000 
-                }).addTo(mainMap);
+                locationMarker = L.marker([lat, lng], { icon: createLocationDot(), zIndexOffset: 1000 }).addTo(mainMap);
             } else {
                 locationMarker.setLatLng([lat, lng]);
             }
         }
         
         function removeLocationMarker() {
-            if (locationMarker) {
-                mainMap.removeLayer(locationMarker);
-                locationMarker = null;
-            }
+            if (locationMarker) { mainMap.removeLayer(locationMarker); locationMarker = null; }
         }
         
-        // ============================================================
-        // START/END MARKERS
-        // ============================================================
         function addStartDot(lat, lng) {
-            if (startMarker) {
-                mainMap.removeLayer(startMarker);
-                startMarker = null;
-            }
-            startMarker = L.circleMarker([lat, lng], {
-                radius: 5,
-                color: '#4ade80',
-                fillColor: '#4ade80',
-                fillOpacity: 1,
-                weight: 2,
-                opacity: 1
-            }).addTo(mainMap);
+            if (startMarker) mainMap.removeLayer(startMarker);
+            startMarker = L.circleMarker([lat, lng], { radius: 5, color: '#4ade80', fillColor: '#4ade80', fillOpacity: 1, weight: 2 }).addTo(mainMap);
         }
         
         function addEndDot(lat, lng) {
-            if (endMarker) {
-                mainMap.removeLayer(endMarker);
-                endMarker = null;
-            }
-            endMarker = L.circleMarker([lat, lng], {
-                radius: 5,
-                color: '#f87171',
-                fillColor: '#f87171',
-                fillOpacity: 1,
-                weight: 2,
-                opacity: 1
-            }).addTo(mainMap);
+            if (endMarker) mainMap.removeLayer(endMarker);
+            endMarker = L.circleMarker([lat, lng], { radius: 5, color: '#f87171', fillColor: '#f87171', fillOpacity: 1, weight: 2 }).addTo(mainMap);
         }
         
         function clearStartEndDots() {
-            if (startMarker) {
-                mainMap.removeLayer(startMarker);
-                startMarker = null;
-            }
-            if (endMarker) {
-                mainMap.removeLayer(endMarker);
-                endMarker = null;
-            }
+            if (startMarker) { mainMap.removeLayer(startMarker); startMarker = null; }
+            if (endMarker) { mainMap.removeLayer(endMarker); endMarker = null; }
         }
         
         // ============================================================
         // MAP INIT
         // ============================================================
         function initMainMap() {
-            mainMap = L.map('map', {
-                zoomControl: false,
-                attributionControl: false
-            }).setView([55.7558, 37.6173], 15);
+            mainMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([55.7558, 37.6173], 15);
+            L.tileLayer(themeConfig.tileUrl, { maxZoom: 19, subdomains: themeConfig.subdomains, crossOrigin: 'anonymous' }).addTo(mainMap);
             
-            L.tileLayer(themeConfig.tileUrl, { 
-                maxZoom: 19,
-                subdomains: themeConfig.subdomains,
-                crossOrigin: 'anonymous'
-            }).addTo(mainMap);
-            
-            glowLine = L.polyline([], {
-                color: themeConfig.glowColor,
-                weight: 14,
-                opacity: 0.25,
-                lineCap: 'round',
-                lineJoin: 'round'
-            }).addTo(mainMap);
-            
-            polyline = L.polyline([], {
-                color: themeConfig.lineColor,
-                weight: 5,
-                opacity: 0.95,
-                lineCap: 'round',
-                lineJoin: 'round'
-            }).addTo(mainMap);
+            glowLine = L.polyline([], { color: themeConfig.glowColor, weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(mainMap);
+            polyline = L.polyline([], { color: themeConfig.lineColor, weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }).addTo(mainMap);
             
             const saved = loadRouteFromStorage();
             if (saved && saved.length > 0) {
@@ -1158,25 +1010,17 @@
                     glowLine.addLatLng([p.lat, p.lng]);
                 });
                 updateLiveStats();
-                
-                if (route.length > 0) {
-                    addStartDot(route[0].lat, route[0].lng);
-                }
+                if (route.length > 0) addStartDot(route[0].lat, route[0].lng);
             }
             
-            // Запрашиваем локацию
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        const lat = pos.coords.latitude;
-                        const lng = pos.coords.longitude;
-                        lastKnownPosition = { lat, lng };
-                        mainMap.setView([lat, lng], 16);
-                        updateLocationMarker(lat, lng);
+                        lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 16);
+                        updateLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng);
                     },
-                    () => {
-                        console.log('Geolocation failed');
-                    },
+                    () => {},
                     { enableHighAccuracy: true, timeout: 5000 }
                 );
             }
@@ -1184,52 +1028,28 @@
         
         function recenterMap() {
             if (lastKnownPosition) {
-                mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true });
-                return;
-            }
-            
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        const lat = pos.coords.latitude;
-                        const lng = pos.coords.longitude;
-                        lastKnownPosition = { lat, lng };
-                        mainMap.setView([lat, lng], 17, { animate: true });
-                        updateLocationMarker(lat, lng);
-                    },
-                    () => {},
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
+                mainMap.panTo([lastKnownPosition.lat, lastKnownPosition.lng], { animate: true, duration: 0.8 });
             }
         }
         
         // ============================================================
-        // TRACKING
+        // TRACKING LOGIC (ОПТИМИЗИРОВАНО)
         // ============================================================
         function startTracking() {
-            if (!navigator.geolocation) {
-                showToast('Geolocation not supported');
-                return;
-            }
+            if (!navigator.geolocation) { showToast('Geolocation not supported'); return; }
             
             startAudioKeepAlive();
-            
             isTracking = true;
             isPaused = false;
             route = [];
-            matchedRoute = null;
             startTime = Date.now();
             pausedDuration = 0;
             pauseStart = null;
-            pointQueue = [];
-            processingQueue = false;
-            isFirstPoint = true;
+            lastAcceptedPoint = null;
+            lastProcessedTime = 0;
             
             kalmanLat.reset();
             kalmanLng.reset();
-            lastAcceptedPoint = null;
-            
-            // Удаляем старые точки старта/финиша
             clearStartEndDots();
             
             document.getElementById('btnRowIdle').style.display = 'none';
@@ -1238,16 +1058,11 @@
             
             timerInterval = setInterval(updateLiveStats, 1000);
             
-            // Берем текущую позицию и центрируем
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    lastKnownPosition = { lat, lng };
-                    mainMap.setView([lat, lng], 17);
-                    updateLocationMarker(lat, lng);
-                    
-                    // Добавляем первую точку сразу
+                    lastKnownPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    mainMap.setView([lastKnownPosition.lat, lastKnownPosition.lng], 17);
+                    updateLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng);
                     handleGPSUpdate(pos);
                 },
                 () => {},
@@ -1256,128 +1071,75 @@
             
             watchId = navigator.geolocation.watchPosition(
                 handleGPSUpdate,
-                (err) => {
-                    console.warn('GPS error:', err);
-                },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+                (err) => console.warn('GPS error:', err),
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
             );
             
             startFallbackPolling();
         }
         
-        let fallbackInterval = null;
-        
         function startFallbackPolling() {
             if (fallbackInterval) clearInterval(fallbackInterval);
             fallbackInterval = setInterval(() => {
-                if (!isTracking) {
-                    clearInterval(fallbackInterval);
-                    fallbackInterval = null;
-                    return;
-                }
-                
+                if (!isTracking) { clearInterval(fallbackInterval); fallbackInterval = null; return; }
                 const lastPointTime = route.length > 0 ? route[route.length - 1].t : startTime;
-                const timeSinceLastPoint = Date.now() - lastPointTime;
-                
-                if (timeSinceLastPoint > 8000) {
-                    navigator.geolocation.getCurrentPosition(
-                        handleGPSUpdate,
-                        () => {},
-                        { enableHighAccuracy: true, timeout: 15000 }
-                    );
+                if (Date.now() - lastPointTime > 5000) {
+                    navigator.geolocation.getCurrentPosition(handleGPSUpdate, () => {}, { enableHighAccuracy: true, timeout: 10000 });
                 }
             }, 3000);
         }
         
         function handleGPSUpdate(pos) {
             if (!mainMap) return;
-            
             const { latitude, longitude, accuracy } = pos.coords;
             
             lastKnownPosition = { lat: latitude, lng: longitude };
             updateGPSIndicator(accuracy);
             
-            // Всегда обновляем точку
+            // Всегда обновляем визуальный маркер (он плавно скользит благодаря CSS)
             updateLocationMarker(latitude, longitude);
             
-            if (isPaused) {
-                mainMap.panTo([latitude, longitude], { animate: true, duration: 0.5 });
-                return;
-            }
+            if (isPaused) return;
+            if (accuracy > 30) return; // Игнорируем плохой сигнал
             
-            if (accuracy > 25) return;
+            const now = Date.now();
+            // Троттлинг: не чаще 1 раза в секунду, чтобы избежать рывков и перегрузки
+            if (now - lastProcessedTime < 1000) return;
             
-            pointQueue.push({
-                lat: latitude,
-                lng: longitude,
-                t: Date.now(),
-                accuracy: accuracy
-            });
-            
-            if (!processingQueue) {
-                processPointQueue();
-            }
-        }
-        
-        function processPointQueue() {
-            if (pointQueue.length === 0) {
-                processingQueue = false;
-                return;
-            }
-            
-            processingQueue = true;
-            const point = pointQueue.shift();
-            
-            const filtered = {
-                lat: kalmanLat.filter(point.lat, point.lng).lat,
-                lng: kalmanLng.filter(point.lng, point.lat).lng,
-                t: point.t,
-                accuracy: point.accuracy
-            };
+            const newPoint = { lat: latitude, lng: longitude, t: now, accuracy };
             
             if (lastAcceptedPoint) {
-                const dist = haversineDistance(lastAcceptedPoint, filtered);
-                const timeDiff = (filtered.t - lastAcceptedPoint.t) / 1000;
+                const dist = haversineDistance(lastAcceptedPoint, newPoint);
+                const timeDiff = (now - lastAcceptedPoint.t) / 1000;
                 
-                if (timeDiff > 0) {
-                    const speed = dist / timeDiff;
-                    if (speed > 12) {
-                        processPointQueue();
-                        return;
-                    }
-                }
+                // Фильтр невозможной скорости (> 35 м/с или 126 км/ч)
+                if (timeDiff > 0 && (dist / timeDiff) > 35) return;
                 
-                if (dist < 1.5) {
-                    processPointQueue();
-                    return;
-                }
+                // Фильтр микро-дрожания на месте (< 4 метров)
+                if (dist < 4) return;
             }
             
-            lastAcceptedPoint = filtered;
-            route.push(filtered);
+            // Применяем сглаживание Калмана
+            const smoothLat = kalmanLat.update(latitude);
+            const smoothLng = kalmanLng.update(longitude);
             
-            polyline.addLatLng([filtered.lat, filtered.lng]);
-            glowLine.addLatLng([filtered.lat, filtered.lng]);
+            const smoothedPoint = { lat: smoothLat, lng: smoothLng, t: now, accuracy };
+            lastAcceptedPoint = smoothedPoint;
+            route.push(smoothedPoint);
+            lastProcessedTime = now;
             
-            // Центрируем карту на новой точке
-            mainMap.panTo([filtered.lat, filtered.lng], { animate: true, duration: 0.3 });
+            polyline.addLatLng([smoothLat, smoothLng]);
+            glowLine.addLatLng([smoothLat, smoothLng]);
             
-            // Добавляем стартовую точку только один раз
+            // Плавное центрирование карты как в Яндекс.Навигаторе
+            mainMap.panTo([smoothLat, smoothLng], { animate: true, duration: 0.8 });
+            
             if (route.length === 1) {
-                addStartDot(filtered.lat, filtered.lng);
-                // Удаляем старую точку локации, чтобы не было дубляжа
-                if (locationMarker) {
-                    mainMap.removeLayer(locationMarker);
-                    locationMarker = null;
-                }
-                // Создаем новую точку локации поверх
-                updateLocationMarker(filtered.lat, filtered.lng);
+                addStartDot(smoothLat, smoothLng);
             }
             
             saveRouteToStorage();
             updateLiveStats();
-            
-            setTimeout(processPointQueue, 20);
         }
         
         function togglePause() {
@@ -1402,21 +1164,11 @@
         }
         
         async function finishTracking() {
-            if (watchId) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-            if (fallbackInterval) {
-                clearInterval(fallbackInterval);
-                fallbackInterval = null;
-            }
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-            }
+            if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+            if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
             
             stopAudioKeepAlive();
-            
             isTracking = false;
             isPaused = false;
             endTime = Date.now();
@@ -1429,28 +1181,21 @@
             if (route.length >= 2) {
                 document.getElementById('matchingBadge').classList.add('active');
                 try {
-                    matchedRoute = await snapToRoad(route, activityProfile);
+                    routeForCard = await snapToRoad(route, 'foot');
                 } catch (e) {
-                    matchedRoute = route;
+                    routeForCard = simplifyTrack(route, 3);
                 }
                 document.getElementById('matchingBadge').classList.remove('active');
             } else {
-                matchedRoute = route;
+                routeForCard = route;
             }
             
-            // Добавляем финишную точку
-            if (matchedRoute && matchedRoute.length > 0) {
-                addEndDot(matchedRoute[matchedRoute.length - 1].lat, matchedRoute[matchedRoute.length - 1].lng);
+            if (routeForCard && routeForCard.length > 0) {
+                addEndDot(routeForCard[routeForCard.length - 1].lat, routeForCard[routeForCard.length - 1].lng);
             }
             
-            // Удаляем точку локации
             removeLocationMarker();
-            
             clearRouteStorage();
-            
-            // Сохраняем маршрут для карточки
-            routeForCard = matchedRoute || route;
-            
             showFinishScreen();
         }
         
@@ -1458,34 +1203,22 @@
             document.getElementById('finishScreen').classList.add('hidden');
             document.getElementById('trackingScreen').classList.remove('hidden');
             route = [];
-            matchedRoute = [];
             routeForCard = [];
             polyline.setLatLngs([]);
             glowLine.setLatLngs([]);
             clearStartEndDots();
             
-            // Восстанавливаем точку локации
-            if (lastKnownPosition) {
-                updateLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng);
-            }
-            
+            if (lastKnownPosition) updateLocationMarker(lastKnownPosition.lat, lastKnownPosition.lng);
             updateLiveStats();
             
-            if (cardMap) {
-                cardMap.remove();
-                cardMap = null;
-                cardMapReady = false;
-            }
-            
+            if (cardMap) { cardMap.remove(); cardMap = null; }
             clearRouteStorage();
         }
         
         function getElapsedTime() {
             if (!startTime) return 0;
             let elapsed = Math.floor(((endTime || Date.now()) - startTime) / 1000);
-            if (isPaused && pauseStart) {
-                elapsed -= Math.floor((Date.now() - pauseStart) / 1000);
-            }
+            if (isPaused && pauseStart) elapsed -= Math.floor((Date.now() - pauseStart) / 1000);
             elapsed -= Math.floor(pausedDuration / 1000);
             return Math.max(0, elapsed);
         }
@@ -1493,22 +1226,17 @@
         function calcDistance(pts) {
             if (!pts || pts.length < 2) return 0;
             let total = 0;
-            for (let i = 1; i < pts.length; i++) {
-                total += haversineDistance(pts[i-1], pts[i]);
-            }
+            for (let i = 1; i < pts.length; i++) total += haversineDistance(pts[i-1], pts[i]);
             return total / 1000;
         }
         
         function updateLiveStats() {
             const d = calcDistance(route);
             document.getElementById('distance').textContent = d.toFixed(2);
-            
             const elapsed = getElapsedTime();
             document.getElementById('time').textContent = fmtTime(elapsed);
-            
             if (d > 0.02) {
-                const pace = elapsed / d;
-                document.getElementById('pace').textContent = fmtPace(pace);
+                document.getElementById('pace').textContent = fmtPace(elapsed / d);
             }
         }
         
@@ -1524,160 +1252,100 @@
             document.getElementById('cardPace').textContent = d > 0.02 ? fmtPace(elapsed / d) : '—';
             
             const now = new Date(endTime || Date.now());
-            const opts = { day: 'numeric', month: 'short', year: 'numeric' };
-            document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', opts).toUpperCase();
+            document.getElementById('cardDate').textContent = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
             
-            setTimeout(() => {
-                initCardMap();
-            }, 300);
+            setTimeout(initCardMap, 300);
         }
         
         function initCardMap() {
             const container = document.getElementById('cardMap');
-            
-            if (cardMap) {
-                cardMap.remove();
-                cardMap = null;
-                cardMapReady = false;
-            }
-            
+            if (cardMap) { cardMap.remove(); cardMap = null; }
             container.innerHTML = '';
             
             const mapDiv = document.createElement('div');
             mapDiv.id = 'cardMap';
             mapDiv.style.width = '100%';
             mapDiv.style.height = '100%';
-            mapDiv.style.background = '#0a0a0b';
             container.appendChild(mapDiv);
             
             try {
                 cardMap = L.map('cardMap', {
-                    zoomControl: false,
-                    attributionControl: false,
-                    dragging: false,
-                    scrollWheelZoom: false,
-                    doubleClickZoom: false,
-                    touchZoom: false,
-                    boxZoom: false,
-                    keyboard: false,
-                    tap: false
+                    zoomControl: false, attributionControl: false, dragging: false,
+                    scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false,
+                    boxZoom: false, keyboard: false, tap: false
                 });
                 
                 L.tileLayer(themeConfig.tileUrl, { 
-                    maxZoom: 19,
-                    subdomains: themeConfig.subdomains,
-                    crossOrigin: 'anonymous'
+                    maxZoom: 19, subdomains: themeConfig.subdomains, crossOrigin: 'anonymous' 
                 }).addTo(cardMap);
                 
                 if (routeForCard && routeForCard.length > 0) {
-                    const distance = calcDistance(routeForCard);
-                    const displayRoute = distance > 3 ? simplifyTrack(routeForCard, 0.00005) : routeForCard;
+                    // Для карточки делаем трек чуть более сглаженным для красоты
+                    const displayRoute = simplifyTrack(routeForCard, 5);
                     
-                    // Глоу
-                    const glow = L.polyline([], {
-                        color: themeConfig.glowColor,
-                        weight: distance > 5 ? 6 : 10,
-                        opacity: distance > 5 ? 0.4 : 0.3,
-                        lineCap: 'round',
-                        lineJoin: 'round'
+                    L.polyline(displayRoute.map(p => [p.lat, p.lng]), {
+                        color: themeConfig.glowColor, weight: 10, opacity: 0.3, lineCap: 'round', lineJoin: 'round'
                     }).addTo(cardMap);
                     
-                    // Основная линия
-                    const line = L.polyline([], {
-                        color: themeConfig.lineColor,
-                        weight: distance > 5 ? 3 : 4,
-                        opacity: 1,
-                        lineCap: 'round',
-                        lineJoin: 'round'
+                    const line = L.polyline(displayRoute.map(p => [p.lat, p.lng]), {
+                        color: themeConfig.lineColor, weight: 4, opacity: 1, lineCap: 'round', lineJoin: 'round'
                     }).addTo(cardMap);
                     
-                    displayRoute.forEach(p => {
-                        glow.addLatLng([p.lat, p.lng]);
-                        line.addLatLng([p.lat, p.lng]);
-                    });
-                    
-                    // Стартовая точка
                     if (displayRoute.length > 0) {
                         L.circleMarker([displayRoute[0].lat, displayRoute[0].lng], {
-                            radius: 4,
-                            color: '#4ade80',
-                            fillColor: '#4ade80',
-                            fillOpacity: 1,
-                            weight: 2
+                            radius: 5, color: '#4ade80', fillColor: '#4ade80', fillOpacity: 1, weight: 2
                         }).addTo(cardMap);
                         
-                        // Финишная
                         if (displayRoute.length > 1) {
                             const last = displayRoute[displayRoute.length - 1];
                             L.circleMarker([last.lat, last.lng], {
-                                radius: 4,
-                                color: '#f87171',
-                                fillColor: '#f87171',
-                                fillOpacity: 1,
-                                weight: 2
+                                radius: 5, color: '#f87171', fillColor: '#f87171', fillOpacity: 1, weight: 2
                             }).addTo(cardMap);
                         }
                     }
                     
                     const bounds = line.getBounds();
                     if (bounds.isValid()) {
-                        cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+                        cardMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
                     }
                     
-                    cardMapReady = true;
-                    
                     setTimeout(() => {
-                        if (cardMap) {
-                            cardMap.invalidateSize();
-                        }
-                    }, 300);
+                        if (cardMap) cardMap.invalidateSize();
+                    }, 100);
                 }
-            } catch (e) {
-                console.error('Card map init error:', e);
-            }
+            } catch (e) { console.error('Card map init error:', e); }
         }
         
         // ============================================================
-        // SCREENSHOT
+        // SCREENSHOT (ОПТИМИЗИРОВАНО ДЛЯ ТАЙЛОВ)
         // ============================================================
         async function captureCardAsImage() {
             const card = document.getElementById('card');
             
-            if (cardMap && cardMapReady) {
+            if (cardMap) {
                 cardMap.invalidateSize();
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Критически важная задержка для гарантированной отрисовки тайлов карты
+                await new Promise(resolve => setTimeout(resolve, 1200));
             }
             
-            try {
-                const canvas = await html2canvas(card, {
-                    useCORS: true,
-                    allowTaint: false,
-                    backgroundColor: '#0f0f14',
-                    scale: 2,
-                    logging: false,
-                    ignoreElements: (element) => element.id === 'cardLoading'
-                });
-                return canvas;
-            } catch (e) {
-                console.error('html2canvas failed:', e);
-                throw e;
-            }
+            return await html2canvas(card, {
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: '#0f0f14',
+                scale: 2, // Высокое качество для Retina
+                logging: false,
+                ignoreElements: (element) => element.id === 'cardLoading'
+            });
         }
         
         async function saveCard() {
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
             
-            // Пересоздаем карту
-            if (cardMap) {
-                cardMap.remove();
-                cardMap = null;
-                cardMapReady = false;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 200));
+            if (cardMap) { cardMap.remove(); cardMap = null; }
+            await new Promise(resolve => setTimeout(resolve, 100));
             initCardMap();
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Время на загрузку тайлов
             
             try {
                 const canvas = await captureCardAsImage();
@@ -1704,21 +1372,15 @@
             const loading = document.getElementById('cardLoading');
             loading.classList.add('active');
             
-            if (cardMap) {
-                cardMap.remove();
-                cardMap = null;
-                cardMapReady = false;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 200));
+            if (cardMap) { cardMap.remove(); cardMap = null; }
+            await new Promise(resolve => setTimeout(resolve, 100));
             initCardMap();
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1500));
             
             try {
                 const canvas = await captureCardAsImage();
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], 'traila.png', { type: 'image/png' });
-                    
                     if (navigator.share && navigator.canShare({ files: [file] })) {
                         try {
                             await navigator.share({ files: [file], title: 'Traila Activity' });
@@ -1774,11 +1436,7 @@
         
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && isTracking) {
-                navigator.geolocation.getCurrentPosition(
-                    handleGPSUpdate,
-                    () => {},
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
+                navigator.geolocation.getCurrentPosition(handleGPSUpdate, () => {}, { enableHighAccuracy: true, timeout: 10000 });
             }
         });
         
